@@ -12,9 +12,9 @@ const REGRAS_DE_OURO = [
   'Viu algo legal? Vai pra lista de compras e espera 2 dias.',
 ];
 
-const neg = (v) => (v < 0 ? ' negativo' : '');
+export const neg = (v) => (v < 0 ? ' negativo' : '');
 
-function categoriaDe(dados, id) {
+export function categoriaDe(dados, id) {
   return dados.categorias.find((c) => c.id === id) ?? null;
 }
 
@@ -27,10 +27,11 @@ function iconeLancamento(dados, l) {
   return categoriaDe(dados, l.categoria_id)?.icone ?? '•';
 }
 
-function linhaLancamento(dados, l) {
+export function linhaLancamento(dados, l) {
   const cat = categoriaDe(dados, l.categoria_id);
   const titulo = l.descricao || cat?.nome || 'Gasto';
-  const detalhes = [dataCurta(l.data), MEIOS[l.meio], l.regra_cartao === 'uber' ? 'vai pra fatura' : null]
+  const detalhes = [dataCurta(l.data), MEIOS[l.meio], l.regra_cartao === 'uber' && !l.antes_do_app ? 'vai pra fatura' : null,
+    l.pendente ? '⏳ esperando internet' : null]
     .filter(Boolean).join(' · ');
   const entrada = l.tipo === 'entrada' || l.tipo === 'resgate_caixinha' || (l.tipo === 'ajuste' && l.valor > 0);
   const valor = l.tipo === 'ajuste' ? Math.abs(l.valor) : l.valor;
@@ -68,6 +69,12 @@ export function folhaLancamento(l, ctx) {
       Pra mudar ou desfazer, toca na conta na aba <a href="#mes" data-fechar>Mês</a> e desmarca.</p>`;
   }
 
+  if (l.pendente) {
+    return `${topo}
+      <p class="nota">⏳ Esse lançamento foi feito sem internet. Ele vai pro Supabase sozinho quando a internet voltar.</p>
+      <button type="button" class="btn-perigo" data-acao="apagar-lancamento">Apagar lançamento</button>`;
+  }
+
   if (l.tipo === 'pagamento_fatura') {
     return `${topo}
       <p class="nota">Pagamento da fatura: <b class="num">${moeda(l.valor)}</b>. Apagar desfaz o pagamento: as contas dessa fatura voltam a "não paga".</p>
@@ -101,15 +108,15 @@ export function folhaLancamento(l, ctx) {
     </form>`;
 }
 
-const maisRecentes = (a, b) => b.data.localeCompare(a.data) || (b.created_at ?? '').localeCompare(a.created_at ?? '');
+export const maisRecentes = (a, b) => b.data.localeCompare(a.data) || (b.created_at ?? '').localeCompare(a.created_at ?? '');
 
-function avisoOffline(ctx) {
+export function avisoOffline(ctx) {
   if (!ctx.offline) return '';
   const quando = ctx.atualizadoEm ? new Date(ctx.atualizadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
   return `<p class="faixa">Sem internet. Mostrando os dados de ${esc(quando)}.</p>`;
 }
 
-function cartaoImportar() {
+export function cartaoImportar() {
   return `
     <section class="cartao">
       <h2>Bora começar</h2>
@@ -117,7 +124,7 @@ function cartaoImportar() {
     </section>`;
 }
 
-function carregando(ctx) {
+export function carregando(ctx) {
   return ctx.dados === null ? '<p class="vazio">Carregando...</p>' : '';
 }
 
@@ -140,6 +147,7 @@ export function telaHoje(ctx) {
   const reserva = dados.caixinhas[0];
   const alertas = calc.alertas(dados, hoje);
   const ultimos = [...dados.lancamentos].sort(maisRecentes).slice(0, 5);
+  const paraFechar = calc.mesParaFechar(dados, hoje);
 
   let sub;
   if (q.aindaDaHoje < 0) {
@@ -150,18 +158,34 @@ export function telaHoje(ctx) {
     sub = `Daqui pra frente: ${moeda(q.porDia)} por dia até ${dataCurta(q.ultimoDia)}`;
   }
 
-  return `${topo}
+  // Antes do salário cair o Livre fica negativo (dinheiro que não caiu não existe).
+  // Em vez de um "por dia" negativo, mostra quanto vai dar quando ele cair.
+  const salario = dados.config.salario;
+  const quandoCair = calc.quantoPossoGastar(mes.livre + salario, calc.gastosDoDia(dados, hoje), hoje);
+  const destaque = mes.salarioCaiu ? `
     <section class="cartao destaque">
       <p class="rotulo">Ainda dá hoje</p>
       <p class="valor-grande num${neg(q.aindaDaHoje)}">${moeda(q.aindaDaHoje)}</p>
       <p class="linha-sub${neg(q.aindaDaHoje)}">${sub}</p>
-      ${mes.salarioCaiu ? '' : '<p class="nota">O salário deste mês ainda não caiu. Quando cair, confirma na aba <a href="#mes">Mês</a>.</p>'}
-    </section>
+    </section>` : `
+    <section class="cartao destaque">
+      <p class="rotulo">Salário ainda não caiu</p>
+      <p class="valor-grande num${neg(quandoCair.porDia)}">${moeda(quandoCair.porDia)}<span class="unidade"> por dia</span></p>
+      <p class="linha-sub">É o que vai dar até ${dataCurta(quandoCair.ultimoDia)} quando os ${moeda(salario)} caírem (dia ${dados.config.dia_salario}).</p>
+      <button type="button" class="btn-primario largo" data-acao="confirmar-salario">Salário caiu</button>
+    </section>`;
+
+  return `${topo}
+    ${destaque}
+
+    ${ctx.naFila ? `<p class="faixa">⏳ ${ctx.naFila === 1 ? '1 lançamento esperando' : `${ctx.naFila} lançamentos esperando`} internet pra ir pro Supabase.</p>` : ''}
+    ${paraFechar ? cartaoFecharMes(paraFechar) : ''}
 
     <div class="grade-2">
       <a class="cartao toque" href="#mes">
-        <p class="rotulo">Livre do mês</p>
-        <p class="valor-medio num${neg(mes.livre)}">${moeda(mes.livre)}</p>
+        <p class="rotulo">${mes.salarioCaiu ? 'Livre do mês' : 'Sobra prevista'}</p>
+        <p class="valor-medio num${neg(mes.salarioCaiu ? mes.livre : mes.livre + salario)}">${moeda(mes.salarioCaiu ? mes.livre : mes.livre + salario)}</p>
+        ${mes.salarioCaiu ? '' : '<p class="mini">quando o salário cair</p>'}
       </a>
       <a class="cartao toque" href="#mes">
         <p class="rotulo">Falta pagar</p>
@@ -281,7 +305,7 @@ export function telaMes(ctx) {
   if (!dados.config) return topo + cartaoImportar();
 
   const plano = calc.planoDoMes(dados, mes);
-  if (plano.projetado && mes > mesAtual) return topo + mesProjetado(plano.itens, ctx);
+  if (plano.projetado && mes > mesAtual) return topo + mesProjetado(mes, plano.itens, ctx);
 
   const r = calc.resumoMes(dados, mes, hoje);
   const salario = dados.config.salario;
@@ -293,6 +317,8 @@ export function telaMes(ctx) {
     .sort((a, b) => b.total - a.total);
   const limites = calc.situacaoLimites(dados, mes);
   const lancamentos = dados.lancamentos.filter((l) => mesDe(l.data) === mes).sort(maisRecentes);
+  const fechamento = dados.meses.find((m) => m.mes === mes);
+  const podeFechar = mes < mesAtual && mes >= mesDe(dados.config.inicio_controle) && !fechamento?.fechado_em;
 
   return `${topo}
     <section class="cartao">
@@ -307,7 +333,10 @@ export function telaMes(ctx) {
       ${!r.salarioCaiu ? `
         <p class="nota">Salário de ${moeda(salario)} ainda não caiu. Sobra prevista: <b class="num">${moeda(sobraPrevista)}</b>.</p>
         ${mes === mesAtual ? `<button type="button" class="btn-primario largo" data-acao="confirmar-salario">Salário caiu</button>` : ''}` : ''}
+      ${fechamento?.fechado_em ? `<p class="mini">Mês fechado em ${dataBR(fechamento.fechado_em.slice(0, 10))}${fechamento.destino_sobra === 'reserva' ? '. A sobra foi pra Reserva.' : fechamento.destino_sobra === 'proximo_mes' ? '. A sobra foi pro mês seguinte.' : '.'}</p>` : ''}
     </section>
+
+    ${podeFechar ? cartaoFecharMes({ mes, sobra: r.livre }) : ''}
 
     <section class="cartao">
       <h2>Contas do mês</h2>
@@ -315,6 +344,7 @@ export function telaMes(ctx) {
         <ul class="lista">${r.itens.map((i) => linhaItem(i, dados, hoje)).join('')}</ul>
         <p class="rodape num">Total ${moeda(r.plano)} · Falta pagar ${moeda(r.faltaPagar)}</p>`
         : '<p class="vazio">Nenhuma conta no plano deste mês.</p>'}
+      ${mes >= mesAtual ? `<button type="button" class="btn-secundario largo" data-acao="nova-avulsa" data-mes="${mes}">+ Conta só deste mês</button>` : ''}
     </section>
 
     ${limites.length ? `
@@ -346,7 +376,7 @@ export function telaMes(ctx) {
 }
 
 // Mês futuro que ainda não tem plano: mostra o que deve vir
-function mesProjetado(itens, ctx) {
+function mesProjetado(mes, itens, ctx) {
   const { dados, hoje } = ctx;
   const total = calc.soma(itens, (i) => calc.valorItem(i, dados, hoje));
   const sobra = dados.config.salario - total;
@@ -362,13 +392,14 @@ function mesProjetado(itens, ctx) {
     </section>
     <section class="cartao">
       <h2>Contas previstas</h2>
-      <ul class="lista">${itens.map((i) => `
+      <ul class="lista">${itens.map((i) => (i.projetado ? `
         <li class="linha">
           <span class="check vazio-check" aria-hidden="true"></span>
           <span class="linha-texto"><span class="linha-titulo">${esc(i.nome)}</span>
             <span class="mini">${esc([i.vencimento ? `vence ${dataCurta(i.vencimento)}` : '', NOMES_TIPO[i.tipo]].filter(Boolean).join(' · '))}</span></span>
           <span class="num linha-valor">${moeda(calc.valorItem(i, dados, hoje))}</span>
-        </li>`).join('')}</ul>
+        </li>` : linhaItem(i, dados, hoje))).join('')}</ul>
+      <button type="button" class="btn-secundario largo" data-acao="nova-avulsa" data-mes="${mes}">+ Conta só deste mês</button>
     </section>`;
 }
 
@@ -433,6 +464,7 @@ export function folhaItem(item, ctx) {
       <label class="campo">Data <input type="date" name="data" value="${hoje}"></label>
       <button type="submit" class="btn-primario">${deposito ? 'Guardei' : 'Paguei'}</button>
       <button type="button" class="btn-secundario" data-acao="mudar-valor">Só atualizar o valor</button>
+      <button type="button" class="btn-perigo" data-acao="tirar-item">Tirar deste mês</button>
       <p class="erro" role="alert"></p>
     </form>`;
 }
@@ -740,16 +772,39 @@ export function folhaCaixinha(caixinha, tipo, ctx) {
     </form>`;
 }
 
-export function telaComprar(ctx) {
+// ---------- Fechar o mês ----------
+
+export function cartaoFecharMes(f) {
+  const proximo = nomeMes(calc.somarMeses(f.mes, 1));
+  let texto;
+  let botoes;
+  if (f.sobra > 0) {
+    texto = `Sobrou <b class="num">${moeda(f.sobra)}</b>. O que faz com isso?`;
+    botoes = `
+      <button type="button" class="btn-primario" data-acao="fechar-mes" data-mes="${f.mes}" data-destino="reserva">Mandar pra Reserva</button>
+      <button type="button" class="btn-secundario" data-acao="fechar-mes" data-mes="${f.mes}" data-destino="proximo_mes">Levar pra ${esc(proximo)}</button>`;
+  } else if (f.sobra < 0) {
+    texto = `Passou <b class="num">${moeda(-f.sobra)}</b> do Livre.`;
+    botoes = `
+      <button type="button" class="btn-primario" data-acao="fechar-mes" data-mes="${f.mes}" data-destino="proximo_mes">Descontar de ${esc(proximo)}</button>
+      <button type="button" class="btn-secundario" data-acao="fechar-mes" data-mes="${f.mes}" data-destino="nada">Deixar assim</button>`;
+  } else {
+    texto = 'Fechou zerado. Certinho.';
+    botoes = '<button type="button" class="btn-primario" data-acao="fechar-mes" data-mes="${f.mes}" data-destino="nada">Fechar</button>';
+  }
   return `
-    <header class="cabecalho"><h1>Comprar</h1><p class="sub">Coisas que você quer, esperando a hora certa.</p></header>${avisoOffline(ctx)}
-    <section class="cartao"><p class="vazio">A lista com links da Amazon, Mercado Livre e Shopee chega na Fase 4.</p></section>`;
+    <section class="cartao alerta-cartao">
+      <h2>${esc(nomeMes(f.mes))} acabou</h2>
+      <p>${texto}</p>
+      <div class="botoes-lado">${botoes}</div>
+    </section>`;
 }
 
 // ---------- Mais ----------
 
 export function telaMais(ctx) {
   const { dados } = ctx;
+  const aReceber = dados ? calc.soma(dados.a_receber.filter((r) => !r.recebido_em)) : 0;
   const importar = dados && !dados.config ? `
     <section class="cartao">
       <h2>Importar dados iniciais</h2>
@@ -768,11 +823,23 @@ export function telaMais(ctx) {
     ${importar}
     <nav class="cartao menu">
       <a href="#conferir"><span>🏦 Conferir saldo</span><span aria-hidden="true">›</span></a>
+      <a href="#receber"><span>🤝 A receber${aReceber ? ` <span class="mini">(${moeda(aReceber)})</span>` : ''}</span><span aria-hidden="true">›</span></a>
+      <a href="#config"><span>⚙️ Configurações</span><span aria-hidden="true">›</span></a>
+      <a href="#como"><span>📖 Como funciona</span><span aria-hidden="true">›</span></a>
     </nav>
     <section class="cartao">
       <h2>Regras de ouro</h2>
       <ol class="regras">${REGRAS_DE_OURO.map((r) => `<li>${r}</li>`).join('')}</ol>
     </section>
+    ${dados?.config ? `
+    <section class="cartao">
+      <h2>Backup</h2>
+      <p class="mini">Guarda uma cópia de tudo (JSON) ou a planilha dos lançamentos do mês (CSV, abre no Excel).</p>
+      <div class="botoes-lado">
+        <button type="button" class="btn-secundario" data-acao="exportar-json">Backup completo</button>
+        <button type="button" class="btn-secundario" data-acao="exportar-csv">Planilha do mês</button>
+      </div>
+    </section>` : ''}
     <section class="cartao">
       <button type="button" class="btn-secundario" data-acao="sair">Sair</button>
     </section>`;

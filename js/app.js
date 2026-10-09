@@ -3,13 +3,17 @@ import {
   configurado, sessaoAtual, entrar, sair, aoMudarSessao,
   carregarTudo, inserir, atualizar, apagar, apagarOnde, importarDados,
 } from './db.js';
-import { hoje as hojeSP, mesDe, lerValor, moeda, dataCurta, esc } from './format.js';
+import { hoje as hojeSP, mesDe, lerValor, moeda, dataCurta, esc, nomeMes } from './format.js';
 import {
   faturaDaCompra, vencimentoDaFatura, resumoMes, gastosDoDia, quantoPossoGastar,
   saldoEsperado, somarMeses, detalheFatura, itensDaFatura, resumoDivida,
+  mesSemPlano, itensDaVirada, limitesDaVirada,
 } from './calc.js';
 import { montarDados } from './importar.js';
+import { lerFila, guardarNaFila, tirarDaFila, semInternet } from './fila.js';
 import * as telas from './telas.js';
+import * as telasRotina from './telas-rotina.js';
+import { criarRotina } from './acoes-rotina.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -62,15 +66,72 @@ function lerCache() {
 
 async function carregar() {
   try {
+    const enviados = await enviarFila();
     estado.dados = await carregarTudo();
     estado.atualizadoEm = new Date().toISOString();
     estado.offline = false;
+    juntarFila();
     salvarCache();
+    if (enviados) avisar(enviados === 1 ? 'O lançamento feito sem internet foi salvo.' : `${enviados} lançamentos feitos sem internet foram salvos.`);
+    await virada();
   } catch (e) {
     console.warn('Não deu pra buscar os dados', e);
     estado.offline = true;
+    if (estado.dados) juntarFila();
   }
   render();
+}
+
+// ---------- Lançamentos sem internet ----------
+// Ficam numa fila no celular. Quando a internet volta, vão pro Supabase.
+// O cliente_id evita lançar duas vezes se a internet cair no meio do envio.
+async function enviarFila() {
+  let enviados = 0;
+  for (const linha of lerFila(estado.usuario.id)) {
+    const { criado_em: _criado, ...paraGravar } = linha;
+    try {
+      await inserir('lancamentos', [paraGravar]);
+      enviados++;
+    } catch (e) {
+      if (e?.code !== '23505') break; // 23505 = já tinha chegado antes: só tira da fila
+    }
+    tirarDaFila(estado.usuario.id, linha.cliente_id);
+  }
+  return enviados;
+}
+
+// Mostra na tela (e conta no Livre) o que ainda está na fila
+function juntarFila() {
+  for (const linha of lerFila(estado.usuario.id)) {
+    if (estado.dados.lancamentos.some((l) => l.cliente_id === linha.cliente_id)) continue;
+    estado.dados.lancamentos.push({ ...linha, id: `fila-${linha.cliente_id}`, created_at: linha.criado_em, pendente: true });
+  }
+}
+
+window.addEventListener('online', () => { if (estado.usuario) carregar(); });
+
+// ---------- Virada do mês ----------
+// No primeiro acesso do mês, monta o plano: contas fixas ativas, parcelas, assinaturas, Uber e CDB.
+let virando = false;
+async function virada() {
+  const mes = mesSemPlano(estado.dados, hojeSP());
+  if (!mes || virando) return;
+  virando = true;
+  try {
+    const itens = itensDaVirada(estado.dados, mes);
+    const limites = limitesDaVirada(estado.dados, mes);
+    if (itens.length) for (const i of await inserir('itens_mes', itens)) trocar('itens_mes', i);
+    if (limites.length) for (const l of await inserir('limites', limites)) trocar('limites', l);
+    salvarCache();
+    avisar(`Plano de ${nomeMes(mes)} montado: ${itens.length} contas. Confere na aba Mês.`);
+  } catch (e) {
+    // Outro aparelho montou ao mesmo tempo: busca o que ficou gravado
+    console.warn('Virada do mês', e);
+    estado.dados = await carregarTudo();
+    salvarCache();
+  } finally {
+    virando = false;
+  }
 }
 
 // Atualiza a lista local depois de gravar, sem buscar tudo de novo
@@ -85,13 +146,18 @@ const ROTAS = {
   hoje: telas.telaHoje,
   mes: telas.telaMes,
   dividas: telas.telaDividas,
-  comprar: telas.telaComprar,
+  comprar: telasRotina.telaComprar,
   mais: telas.telaMais,
   conferir: telas.telaConferir,
   fatura: telas.telaFatura,
   caixinhas: telas.telaCaixinhas,
+  receber: telasRotina.telaReceber,
+  config: telasRotina.telaConfig,
+  como: telasRotina.telaComo,
 };
-const ABA_DA_ROTA = { conferir: 'mais', fatura: 'hoje', caixinhas: 'hoje' };
+const ABA_DA_ROTA = {
+  conferir: 'mais', fatura: 'hoje', caixinhas: 'hoje', receber: 'mais', config: 'mais', como: 'mais',
+};
 
 function rotaAtual() {
   const rota = location.hash.slice(1);
@@ -99,7 +165,7 @@ function rotaAtual() {
 }
 
 function ctx() {
-  return { ...estado, hoje: hojeSP() };
+  return { ...estado, hoje: hojeSP(), naFila: estado.usuario ? lerFila(estado.usuario.id).length : 0 };
 }
 
 function render() {
@@ -123,6 +189,12 @@ window.addEventListener('hashchange', () => {
 // Voltou pro app (ex.: abriu de novo no iPhone): busca dados novos
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && estado.usuario) carregar();
+});
+
+// ---------- Rotina (Comprar, A receber, Configurações, fechar mês, exportar) ----------
+const rotina = criarRotina({
+  estado, trocar, salvarCache, render, avisar, abrirFolha, fecharFolha, ctx, porDiaAgora,
+  recarregar: carregar,
 });
 
 // ---------- Aviso rápido ----------
@@ -176,6 +248,8 @@ conteudo.addEventListener('click', async (e) => {
   } else if (acao === 'cancelar-conferencia') {
     estado.conferencia = null;
     render();
+  } else {
+    await rotina.clique(acao, alvo);
   }
 });
 
@@ -306,8 +380,19 @@ formLancar.addEventListener('submit', async (e) => {
     render();
     avisar(`Lançado. Daqui pra frente: ${moeda(porDiaAgora().porDia)} por dia`);
   } catch (err) {
-    console.warn(err);
-    erro.textContent = ERRO_REDE;
+    if (!semInternet(err)) {
+      console.warn(err);
+      erro.textContent = ERRO_REDE;
+      return;
+    }
+    // Sem internet: guarda no celular e manda depois
+    const criado = new Date().toISOString();
+    guardarNaFila(estado.usuario.id, { ...linha, criado_em: criado });
+    estado.dados.lancamentos.push({ ...linha, id: `fila-${linha.cliente_id}`, created_at: criado, pendente: true });
+    salvarCache();
+    folhaLancar.close();
+    render();
+    avisar(`Sem internet: ficou guardado aqui e vai quando a internet voltar. Daqui pra frente: ${moeda(porDiaAgora().porDia)} por dia`);
   }
 });
 
@@ -326,7 +411,17 @@ folhaItem.addEventListener('click', async (e) => {
   if (!alvo) return;
   const item = estado.itemAberto;
   try {
-    if (alvo.dataset.acao === 'desmarcar-item') {
+    if (alvo.dataset.acao === 'tirar-item') {
+      if (!confirm(`Tirar "${item.nome}" do plano deste mês?`)) return;
+      await ocupado(alvo, 'Tirando...', async () => {
+        await apagar('itens_mes', item.id);
+        estado.dados.itens_mes = estado.dados.itens_mes.filter((i) => i.id !== item.id);
+        salvarCache();
+      });
+      folhaItem.close();
+      render();
+      avisar(`${item.nome} saiu do plano. Daqui pra frente: ${moeda(porDiaAgora().porDia)} por dia`);
+    } else if (alvo.dataset.acao === 'desmarcar-item') {
       await ocupado(alvo, 'Desmarcando...', () => desmarcarItem(item));
       folhaItem.close();
       render();
@@ -422,13 +517,25 @@ function abrirFolha(html) {
   folhaGeral.showModal();
 }
 
-folhaGeral.addEventListener('click', (e) => {
-  if (e.target === folhaGeral || e.target.closest('[data-fechar]')) folhaGeral.close();
+function fecharFolha() {
+  folhaGeral.close();
+}
+
+folhaGeral.addEventListener('click', async (e) => {
+  if (e.target === folhaGeral || e.target.closest('[data-fechar]')) { folhaGeral.close(); return; }
+  const alvo = e.target.closest('[data-acao]');
+  if (alvo) await rotina.cliqueFolha(alvo.dataset.acao, alvo);
 });
+
+folhaGeral.addEventListener('input', (e) => rotina.digitou(e));
 
 folhaGeral.addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = e.target;
+  if (form.id !== 'form-fatura' && form.id !== 'form-caixinha') {
+    await rotina.enviar(form);
+    return;
+  }
   const erro = form.querySelector('.erro');
   const valor = lerValor(form.elements.valor.value);
   if (!valor || valor <= 0) { erro.textContent = 'Valor inválido.'; return; }
@@ -531,7 +638,8 @@ folhaEditar.addEventListener('click', async (e) => {
   if (!confirm(`Apagar "${l.descricao || 'lançamento'}" de ${moeda(Math.abs(l.valor))}?`)) return;
   try {
     await ocupado(alvo, 'Apagando...', async () => {
-      if (l.tipo === 'pagamento_fatura') await desfazerPagamentoFatura(l.fatura_mes);
+      if (l.pendente) tirarDaFila(estado.usuario.id, l.cliente_id);
+      else if (l.tipo === 'pagamento_fatura') await desfazerPagamentoFatura(l.fatura_mes);
       else await apagar('lancamentos', l.id);
       estado.dados.lancamentos = estado.dados.lancamentos.filter((x) => x.id !== l.id);
       salvarCache();

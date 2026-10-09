@@ -361,20 +361,34 @@ export function linhaDoTempo(dados) {
 
 // ---------- Projeção ----------
 
-// Plano de um mês: o de verdade, se já existe; senão, montado com as contas fixas ativas
-// e as parcelas que vencem no mês.
+// O mês já foi montado (pela virada ou pela importação) quando tem conta vinda de conta fixa ou parcela.
+// Conta avulsa sozinha não conta: dá pra adicionar a carne de dezembro antes de dezembro começar.
+const montado = (dados, mes) => dados.itens_mes.some((i) => i.mes === mes && (i.conta_fixa_id || i.parcela_id));
+
+// Plano de um mês: o de verdade, se já foi montado; senão, o projetado (contas fixas ativas e
+// parcelas que vencem no mês) junto com as avulsas que já existirem.
 export function planoDoMes(dados, mes) {
   const reais = dados.itens_mes.filter((i) => i.mes === mes);
-  if (reais.length) return { itens: reais, projetado: false };
+  if (montado(dados, mes)) return { itens: reais, projetado: false };
+  return { itens: [...planoProjetado(dados, mes), ...reais].sort(porVencimento), projetado: true };
+}
+
+function planoProjetado(dados, mes) {
+  const venceCartao = dados.config?.cartao_vence_dia;
+  const categoriaParcelas = dados.categorias.find((c) => c.nome === 'Parcelas e dívidas')?.id ?? null;
+  const comQuem = (nome, quem) => (quem && !nome.includes('(') ? `${nome} (${quem})` : nome);
 
   const itens = [];
   for (const c of dados.contas_fixas) {
     if (!c.ativa) continue;
     const doCartao = c.tipo === 'assinatura' || c.tipo === 'fatura_uber';
+    // Conta do cartão vence junto com a fatura
+    const dia = doCartao ? venceCartao : c.dia;
     itens.push({
-      id: `projetado-${c.id}`, mes, nome: c.nome, tipo: c.tipo === 'conta' ? 'conta_fixa' : c.tipo,
+      id: `projetado-${c.id}`, mes, nome: comQuem(c.nome, c.quem), tipo: c.tipo === 'conta' ? 'conta_fixa' : c.tipo,
       valor_previsto: c.valor_previsto, valor_real: null,
-      vencimento: c.dia ? dataNoMes(mes, c.dia) : null, categoria_id: c.categoria_id,
+      vencimento: dia ? dataNoMes(mes, dia) : null, categoria_id: c.categoria_id,
+      conta_fixa_id: c.id, parcela_id: null, caixinha_id: c.caixinha_id ?? null,
       fatura_mes: doCartao ? mes : null, pago: false, ordem: c.ordem ?? 0, projetado: true,
     });
   }
@@ -382,14 +396,20 @@ export function planoDoMes(dados, mes) {
     if (p.paga || mesDe(p.vencimento) !== mes) continue;
     const d = dados.dividas.find((x) => x.id === p.divida_id);
     if (!d || d.status === 'quitada') continue;
+    // Categoria: a mesma que essa dívida usou no último plano; se não tiver, "Parcelas e dívidas"
+    const anterior = dados.itens_mes
+      .filter((i) => i.parcela_id && dados.parcelas.find((x) => x.id === i.parcela_id)?.divida_id === d.id)
+      .sort((a, b) => b.mes.localeCompare(a.mes))[0];
+    const nome = d.total_parcelas ? `${d.nome} ${p.numero}/${d.total_parcelas}` : d.nome;
     itens.push({
-      id: `projetado-${p.id}`, mes, nome: d.total_parcelas ? `${d.nome} ${p.numero}/${d.total_parcelas}` : d.nome,
-      tipo: 'parcela', valor_previsto: p.valor, valor_real: null, vencimento: p.vencimento,
+      id: `projetado-${p.id}`, mes, nome: comQuem(nome, d.credor), tipo: 'parcela',
+      valor_previsto: p.valor, valor_real: null, vencimento: p.vencimento,
+      categoria_id: anterior?.categoria_id ?? categoriaParcelas,
+      conta_fixa_id: null, parcela_id: p.id, caixinha_id: null, fatura_mes: null,
       pago: false, ordem: 0, projetado: true,
     });
   }
-  itens.sort(porVencimento);
-  return { itens, projetado: true };
+  return itens;
 }
 
 export function projecao(dados, mesInicial, meses, hoje) {
@@ -399,6 +419,67 @@ export function projecao(dados, mesInicial, meses, hoje) {
     const total = soma(itens, (item) => valorItem(item, dados, hoje));
     return { mes, total, sobra: dados.config.salario - total, projetado };
   });
+}
+
+// ---------- Virada e fechamento do mês ----------
+
+// Mês que precisa ter o plano montado: o atual, se ainda não foi montado.
+// O mês em que o controle começou fica de fora (ele foi importado do histórico).
+export function mesSemPlano(dados, hoje) {
+  const mes = mesDe(hoje);
+  if (!dados.config || mes <= mesDe(dados.config.inicio_controle)) return null;
+  return montado(dados, mes) ? null : mes;
+}
+
+// Linhas pra gravar o plano do mês (contas fixas ativas, parcelas, assinaturas, Uber e CDB).
+// As avulsas que já existirem no mês ficam como estão.
+export function itensDaVirada(dados, mes) {
+  if (montado(dados, mes)) return [];
+  return planoProjetado(dados, mes).sort(porVencimento).map((i, ordem) => ({
+    mes, nome: i.nome, tipo: i.tipo, valor_previsto: i.valor_previsto, vencimento: i.vencimento,
+    categoria_id: i.categoria_id ?? null, conta_fixa_id: i.conta_fixa_id, parcela_id: i.parcela_id,
+    caixinha_id: i.caixinha_id, fatura_mes: i.fatura_mes, ordem,
+  }));
+}
+
+// Limites do mês novo: copia os do último mês que tinha limite.
+export function limitesDaVirada(dados, mes) {
+  if (dados.limites.some((l) => l.mes === mes)) return [];
+  const ultimo = dados.limites.map((l) => l.mes).filter((m) => m < mes).sort().at(-1);
+  if (!ultimo) return [];
+  return dados.limites
+    .filter((l) => l.mes === ultimo)
+    .map((l) => ({ mes, nome: l.nome, valor: l.valor, categorias: l.categorias }));
+}
+
+// Mês anterior que ainda não foi fechado (pra perguntar o que fazer com a sobra).
+export function mesParaFechar(dados, hoje) {
+  if (!dados.config) return null;
+  const mes = somarMeses(mesDe(hoje), -1);
+  if (mes < mesDe(dados.config.inicio_controle)) return null;
+  if (dados.meses.some((m) => m.mes === mes && m.fechado_em)) return null;
+  const ultimoDia = dataNoMes(mes, 31);
+  return { mes, ultimoDia, sobra: resumoMes(dados, mes, ultimoDia).livre };
+}
+
+// ---------- Comprar ----------
+
+export const ESFRIAR_HORAS = 48;
+
+// Situação de um desejo: ainda esfriando? cabe no Livre agora? senão, em que mês cabe?
+export function situacaoDesejo(desejo, dados, hoje, agora = Date.now()) {
+  const liberaEm = Date.parse(desejo.created_at) + ESFRIAR_HORAS * 3600000;
+  const mes = resumoMes(dados, mesDe(hoje), hoje);
+  const gastosHoje = gastosDoDia(dados, hoje);
+  const antes = quantoPossoGastar(mes.livre, gastosHoje, hoje).porDia;
+  const preco = desejo.preco;
+  const cabeAgora = preco != null && preco <= mes.livre;
+  const depois = preco != null ? quantoPossoGastar(mes.livre - preco, gastosHoje, hoje).porDia : null;
+  let quandoCabe = null;
+  if (preco != null && !cabeAgora) {
+    quandoCabe = projecao(dados, somarMeses(mesDe(hoje), 1), 12, hoje).find((p) => p.sobra >= preco) ?? null;
+  }
+  return { esfriando: agora < liberaEm, liberaEm, livre: mes.livre, cabeAgora, porDiaAntes: antes, porDiaDepois: depois, quandoCabe };
 }
 
 // ---------- Alertas da tela Hoje ----------

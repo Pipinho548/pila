@@ -226,7 +226,7 @@ test('projeção: usa o plano de verdade se existe; senão monta com contas fixa
     { id: 'c2', nome: 'Velha', tipo: 'conta', valor_previsto: 5000, ativa: false },
     { id: 'c3', nome: 'Uber', tipo: 'fatura_uber', valor_previsto: 30000, ativa: true },
   ];
-  d.itens_mes.push({ id: 'i1', mes: '2026-12', nome: 'Real', tipo: 'avulsa', valor_previsto: 7000, valor_real: null });
+  d.itens_mes.push({ id: 'i1', mes: '2026-12', nome: 'Real', tipo: 'conta_fixa', conta_fixa_id: 'c1', valor_previsto: 7000, valor_real: null });
   const [dez, jan] = projecao(d, '2026-12', 2, '2026-11-10');
   assert.deepEqual([dez.total, dez.projetado], [7000, false]);
   assert.deepEqual([jan.total, jan.sobra, jan.projetado], [150000, 150000, true]);

@@ -474,3 +474,24 @@ details[open].cartao summary { margin-bottom: 8px; }
 .check.vazio-check { border-style: dashed; }
 
 .cartao > details summary { cursor: pointer; margin-top: 12px; }
+
+/* ---------- Fase 4 ---------- */
+.topo-botao { margin: 0 0 12px; }
+.check-linha { display: flex; align-items: center; gap: 10px; font-size: 16px; padding: 4px 0; }
+.check-linha input { width: 22px; height: 22px; accent-color: var(--primaria); flex: none; }
+.caixas { border: 0; margin: 0; padding: 0; display: grid; gap: 2px; }
+.caixas legend { font-size: 14px; color: var(--texto-2); margin-bottom: 6px; }
+.chip-botao {
+  padding: 8px 12px; border-radius: 999px; border: 1px solid var(--borda);
+  background: var(--fundo); color: var(--texto); font-size: 15px; cursor: pointer;
+}
+.cartao .chips + .largo { margin-top: 14px; }
+.btn-link { background: none; border: 0; color: var(--primaria); padding: 10px 0 0; font-size: 15px; cursor: pointer; }
+.campo textarea {
+  width: 100%; padding: 12px 14px; border: 1px solid var(--borda); border-radius: 12px;
+  background: var(--fundo); color: var(--texto); font-size: 16px; resize: vertical;
+}
+.campo select:disabled, .btn-primario:disabled { cursor: not-allowed; }
+.desejo .botoes-lado { margin-top: 12px; }
+.desejo h2 { margin: 0; overflow-wrap: anywhere; }
+.valor-grande .unidade { font-size: 18px; font-weight: 500; color: var(--texto-2); letter-spacing: 0; }
