@@ -23,6 +23,9 @@ node --test
 Preencha `js/config.js` com a **Project URL** e a chave **anon / publishable** do seu projeto
 (Supabase > Project Settings > API). Nunca coloque a chave `service_role` / `secret` aqui.
 
+Tabelas: no Supabase, abra **SQL Editor > New query**, cole o conteúdo de `supabase/schema.sql` e clique em **Run**.
+Pode rodar de novo sem problema. Toda tabela tem RLS: sem login, nada aparece.
+
 ## Publicar
 
 O GitHub Pages publica a branch `main` sozinho. Depois de mudar algo:
