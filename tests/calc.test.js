@@ -253,15 +253,15 @@ test('gastos de uma categoria: dia a dia (mesmo total da lista) e contas do plan
 
 test('assinatura lançada no cartão: não mexe no Livre do mês, entra no plano do mês da fatura, conta uma vez na fatura', () => {
   const d = base();
-  d.itens_mes.push({ id: 'as1', mes: '2026-11', nome: 'Escavador', tipo: 'assinatura', valor_previsto: 990, valor_real: null, fatura_mes: '2026-11', pago: false });
+  d.itens_mes.push({ id: 'as1', mes: '2026-11', nome: 'Revista digital', tipo: 'assinatura', valor_previsto: 1490, valor_real: null, fatura_mes: '2026-11', pago: false });
   d.lancamentos.push(
     lanc({ data: '2026-10-05', tipo: 'entrada', valor: 300000, descricao: 'Salário' }),
-    lanc({ data: '2026-10-08', valor: 990, meio: 'cartao', regra_cartao: 'assinatura', fatura_mes: '2026-11', item_mes_id: 'as1' }),
+    lanc({ data: '2026-10-20', valor: 1490, meio: 'cartao', regra_cartao: 'assinatura', fatura_mes: '2026-11', item_mes_id: 'as1' }),
   );
-  assert.equal(resumoMes(d, '2026-10', '2026-10-09').livre, 300000);
-  assert.equal(resumoMes(d, '2026-11', '2026-11-09').plano, 990);
+  assert.equal(resumoMes(d, '2026-10', '2026-10-21').livre, 300000);
+  assert.equal(resumoMes(d, '2026-11', '2026-11-09').plano, 1490);
   const f = detalheFatura(d, '2026-11', '2026-11-04');
-  assert.equal(f.assinaturas, 990);
-  assert.equal(f.total, 990);
-  assert.equal(f.origem.assinaturas, 990);
+  assert.equal(f.assinaturas, 1490);
+  assert.equal(f.total, 1490);
+  assert.equal(f.origem.assinaturas, 1490);
 });
