@@ -51,6 +51,15 @@ Em 1 ou 2 minutos o site atualiza. Se mudou arquivo do app, aumente `VERSAO` no 
 O repositório é público. Nenhum dado financeiro fica no código: tudo vive no Supabase, protegido por login e RLS.
 A pasta `privado/`, o `dados-iniciais.json` e qualquer backup estão no `.gitignore`.
 
+## Avisos de vencimento (iPhone)
+
+Todo dia às 9h, se tiver conta vencendo hoje ou amanhã, chega uma notificação. Funciona no iPhone com iOS 16.4 ou mais novo, com o Pila aberto pelo ícone da tela inicial.
+
+Peças:
+- `supabase/avisos.sql`: tabela dos aparelhos (rodar no SQL Editor).
+- `supabase/functions/avisos/index.ts`: função que monta e manda os avisos (Edge Functions, com "Verify JWT" desligado).
+- Segredos da função `PILA_VAPID` e `PILA_SEGREDO`, e o agendamento das 9h: ficam em `privado/` (não vão pro GitHub).
+
 ## Backup
 
 No app, vá em **Mais > Backup**:

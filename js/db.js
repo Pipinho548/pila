@@ -82,6 +82,30 @@ export async function apagarOnde(tabela, coluna, valor) {
   if (error) throw error;
 }
 
+// ---------- Avisos no iPhone ----------
+
+export async function salvarInscricao(inscricao, aparelho) {
+  const { error } = await supabase.from('push_inscricoes').upsert({
+    endpoint: inscricao.endpoint,
+    p256dh: inscricao.keys.p256dh,
+    auth: inscricao.keys.auth,
+    aparelho,
+  }, { onConflict: 'endpoint' });
+  if (error) throw error;
+}
+
+export async function apagarInscricao(endpoint) {
+  const { error } = await supabase.from('push_inscricoes').delete().eq('endpoint', endpoint);
+  if (error) throw error;
+}
+
+// Pede pra função do Supabase mandar um aviso de teste pros aparelhos desta conta
+export async function avisoDeTeste() {
+  const { data, error } = await supabase.functions.invoke('avisos', { body: { tipo: 'teste' } });
+  if (error) throw error;
+  return data;
+}
+
 // ---------- Importar dados iniciais ----------
 
 // Grava tudo na ordem certa. Só roda com a conta vazia.

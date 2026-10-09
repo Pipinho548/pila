@@ -2,7 +2,9 @@
 import {
   configurado, sessaoAtual, entrar, sair, aoMudarSessao,
   carregarTudo, inserir, atualizar, apagar, apagarOnde, importarDados,
+  salvarInscricao, apagarInscricao, avisoDeTeste,
 } from './db.js';
+import { VAPID_PUBLICA } from './config.js';
 import { hoje as hojeSP, mesDe, lerValor, moeda, dataCurta, esc, nomeMes } from './format.js';
 import {
   faturaDaCompra, vencimentoDaFatura, resumoMes, gastosDoDia, quantoPossoGastar,
@@ -196,6 +198,78 @@ window.addEventListener('hashchange', () => {
   window.scrollTo(0, 0);
 });
 
+// ---------- Avisos de vencimento (notificação no iPhone) ----------
+// estado.avisos: 'sem-suporte' | 'bloqueado' | 'desligado' | 'ligado'
+async function verificarAvisos() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    estado.avisos = 'sem-suporte';
+  } else if (Notification.permission === 'denied') {
+    estado.avisos = 'bloqueado';
+  } else {
+    const reg = await navigator.serviceWorker.ready;
+    estado.avisos = (await reg.pushManager.getSubscription()) ? 'ligado' : 'desligado';
+  }
+  if (rotaAtual() === 'mais') render();
+}
+
+const chaveEmBytes = (base64url) => {
+  const b64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+  return Uint8Array.from(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)), (c) => c.charCodeAt(0));
+};
+
+async function ligarAvisos(botao) {
+  // O iPhone só deixa pedir permissão logo depois do toque: pede antes de qualquer outra coisa
+  const permissao = await Notification.requestPermission();
+  if (permissao !== 'granted') {
+    estado.avisos = permissao === 'denied' ? 'bloqueado' : 'desligado';
+    render();
+    return;
+  }
+  try {
+    await ocupado(botao, 'Ligando...', async () => {
+      const reg = await navigator.serviceWorker.ready;
+      const inscricao = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: chaveEmBytes(VAPID_PUBLICA) });
+      const aparelho = /iPhone/.test(navigator.userAgent) ? 'iPhone' : /Android/.test(navigator.userAgent) ? 'Android' : 'Computador';
+      await salvarInscricao(inscricao.toJSON(), aparelho);
+    });
+    estado.avisos = 'ligado';
+    render();
+    avisar('Avisos ligados. Toca em "Mandar um teste" pra ver se chega.');
+  } catch (e) {
+    console.warn(e);
+    avisar('Não deu pra ligar os avisos. Confere a internet e tenta de novo.', 'erro');
+  }
+}
+
+async function desligarAvisos(botao) {
+  try {
+    await ocupado(botao, 'Desligando...', async () => {
+      const reg = await navigator.serviceWorker.ready;
+      const inscricao = await reg.pushManager.getSubscription();
+      if (inscricao) {
+        await apagarInscricao(inscricao.endpoint);
+        await inscricao.unsubscribe();
+      }
+    });
+    estado.avisos = 'desligado';
+    render();
+    avisar('Avisos desligados neste aparelho.');
+  } catch (e) {
+    console.warn(e);
+    avisar('Não deu pra desligar. Confere a internet e tenta de novo.', 'erro');
+  }
+}
+
+async function testarAvisos(botao) {
+  try {
+    const r = await ocupado(botao, 'Mandando...', () => avisoDeTeste());
+    avisar(r?.enviados ? 'Teste enviado. Deve chegar em alguns segundos.' : 'Nenhum aparelho com avisos ligados.');
+  } catch (e) {
+    console.warn(e);
+    avisar('O teste não saiu. A função "avisos" já está no Supabase?', 'erro');
+  }
+}
+
 // ---------- Sem zoom ----------
 // O iPhone ignora o "user-scalable=no" em alguns casos: bloqueia o zoom de pinça aqui também.
 for (const evento of ['gesturestart', 'gesturechange']) {
@@ -283,6 +357,12 @@ conteudo.addEventListener('click', async (e) => {
     abrirItem(alvo.dataset.id);
   } else if (acao === 'abrir-lancamento') {
     abrirLancamento(alvo.dataset.id);
+  } else if (acao === 'ligar-avisos') {
+    await ligarAvisos(alvo);
+  } else if (acao === 'desligar-avisos') {
+    await desligarAvisos(alvo);
+  } else if (acao === 'testar-avisos') {
+    await testarAvisos(alvo);
   } else if (acao === 'ver-categoria') {
     abrirFolha(telas.folhaGastosCategoria(alvo.dataset.titulo, alvo.dataset.ids.split(','), alvo.dataset.mes, ctx()));
   } else if (acao === 'ir-mes') {
@@ -906,6 +986,7 @@ function mostrarApp(sessao) {
     lerCache();
     render();
     carregar();
+    verificarAvisos().catch((e) => console.warn('Avisos', e));
   }
 }
 

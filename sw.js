@@ -2,7 +2,7 @@
 // Caminhos relativos porque no GitHub Pages o app roda em /pila/.
 // Mudou algum arquivo do app? Aumente a VERSAO.
 
-const VERSAO = 'pila-v15';
+const VERSAO = 'pila-v16';
 
 const SHELL = [
   './',
@@ -38,6 +38,30 @@ self.addEventListener('activate', (e) => {
       .then((nomes) => Promise.all(nomes.filter((n) => n !== VERSAO).map((n) => caches.delete(n))))
       .then(() => self.clients.claim()),
   );
+});
+
+// Aviso de vencimento que chega do Supabase
+self.addEventListener('push', (e) => {
+  let aviso = { titulo: 'Pila', corpo: '' };
+  try { aviso = { ...aviso, ...e.data.json() }; } catch { aviso.corpo = e.data?.text() ?? ''; }
+  e.waitUntil(self.registration.showNotification(aviso.titulo, {
+    body: aviso.corpo,
+    icon: './icons/icon-192.png',
+    badge: './icons/icon-192.png',
+    data: { url: aviso.url || './' },
+  }));
+});
+
+// Tocar no aviso abre o Pila
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = new URL(e.notification.data?.url || './', self.registration.scope).href;
+  e.waitUntil((async () => {
+    const janelas = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const aberta = janelas.find((j) => j.url.startsWith(self.registration.scope));
+    if (aberta) { await aberta.focus(); return aberta.navigate(url); }
+    return self.clients.openWindow(url);
+  })());
 });
 
 self.addEventListener('fetch', (e) => {

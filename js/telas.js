@@ -1003,6 +1003,29 @@ export function cartaoFecharMes(f) {
     </section>`;
 }
 
+// ---------- Avisos de vencimento ----------
+
+function cartaoAvisos(situacao) {
+  const textos = {
+    'sem-suporte': '<p class="mini">Pra ligar os avisos, abre o Pila pelo ícone da tela inicial do iPhone (precisa do iOS 16.4 ou mais novo).</p>',
+    bloqueado: '<p class="mini">Os avisos estão bloqueados. Pra liberar: Ajustes do iPhone, Notificações, Pila.</p>',
+    desligado: `
+      <p class="mini">Todo dia às 9h, se tiver conta vencendo hoje ou amanhã, chega um aviso no celular.</p>
+      <button type="button" class="btn-primario largo" data-acao="ligar-avisos">Ligar avisos</button>`,
+    ligado: `
+      <p class="mini">Ligados neste aparelho. Chegam às 9h quando tem conta vencendo hoje ou amanhã, e quando o prazo de uma dívida está chegando.</p>
+      <div class="botoes-lado">
+        <button type="button" class="btn-secundario" data-acao="testar-avisos">Mandar um teste</button>
+        <button type="button" class="btn-secundario" data-acao="desligar-avisos">Desligar</button>
+      </div>`,
+  };
+  return `
+    <section class="cartao">
+      <h2>Avisos de vencimento</h2>
+      ${textos[situacao] ?? '<p class="mini">Vendo se este aparelho recebe avisos...</p>'}
+    </section>`;
+}
+
 // ---------- Mais ----------
 
 export function telaMais(ctx) {
@@ -1030,6 +1053,7 @@ export function telaMais(ctx) {
       <a href="#config"><span>Configurações</span><span aria-hidden="true">›</span></a>
       <a href="#como"><span>Como funciona</span><span aria-hidden="true">›</span></a>
     </nav>
+    ${dados?.config ? cartaoAvisos(ctx.avisos) : ''}
     <section class="cartao">
       <h2>Aparência</h2>
       <fieldset class="segmentado escolha-tema">
