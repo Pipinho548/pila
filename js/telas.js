@@ -61,8 +61,9 @@ export function folhaLancamento(l, ctx) {
     <p class="sub">${esc(sub)}</p>
     ${l.observacao ? `<p class="mini obs">${esc(l.observacao)}</p>` : ''}`;
 
-  // Pagamento de conta do mês: desfaz pela conta, pra não ficar marcada como paga sem lançamento
-  if (l.item_mes_id) {
+  // Pagamento de conta do mês: desfaz pela conta, pra não ficar marcada como paga sem lançamento.
+  // (Assinatura lançada no cartão também tem conta ligada, mas é editada aqui mesmo.)
+  if (l.item_mes_id && l.regra_cartao !== 'assinatura') {
     const item = dados.itens_mes.find((i) => i.id === l.item_mes_id);
     return `${topo}
       <p class="nota">Esse é o pagamento de <b>${esc(item?.nome ?? 'uma conta do mês')}</b>: ${moeda(l.valor)}.
@@ -99,7 +100,16 @@ export function folhaLancamento(l, ctx) {
         <legend>Meio</legend>
         ${meios.map((m) => `
           <label><input type="radio" name="meio" value="${m}"${m === (l.meio ?? 'pix') ? ' checked' : ''}><span>${MEIOS[m]}</span></label>`).join('')}
-      </fieldset>` : ''}
+      </fieldset>
+      <div class="regra-cartao">
+        <p class="mini">No cartão, conta como</p>
+        <fieldset class="segmentado">
+          <legend>Conta como</legend>
+          <label><input type="radio" name="regra" value="outra"${l.regra_cartao !== 'assinatura' ? ' checked' : ''}><span>Gasto de agora</span></label>
+          <label><input type="radio" name="regra" value="assinatura"${l.regra_cartao === 'assinatura' ? ' checked' : ''}><span>Assinatura</span></label>
+        </fieldset>
+        ${l.regra_cartao === 'assinatura' && l.fatura_mes ? `<p class="mini">Entra no plano de ${esc(nomeMes(l.fatura_mes))}, não no Livre do mês da compra.</p>` : ''}
+      </div>` : ''}
       <label class="campo">Descrição <input name="descricao" autocomplete="off" value="${esc(l.descricao ?? '')}"></label>
       <label class="campo">Data <input type="date" name="data" value="${l.data}"></label>
       <button type="submit" class="btn-primario">Salvar</button>

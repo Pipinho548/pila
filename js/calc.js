@@ -95,8 +95,11 @@ export function detalheFatura(dados, faturaMes, hoje) {
     .filter((l) => l.meio === 'cartao' && l.tipo === 'gasto' && l.fatura_mes === faturaMes)
     .sort((a, b) => a.data.localeCompare(b.data));
   const novas = compras.filter((l) => !l.antes_do_app);
-  // Assinaturas (Claude, Google) cobram sozinhas: entram pela conta do plano, não por lançamento
-  const itensAssinatura = dados.itens_mes.filter((i) => i.tipo === 'assinatura' && i.fatura_mes === faturaMes);
+  // Assinaturas fixas (Claude, Google) cobram sozinhas: entram pela conta do plano, não por lançamento.
+  // Assinatura lançada à mão já tem a compra ligada à conta do plano: conta uma vez só (pela compra).
+  const ligadas = new Set(compras.map((l) => l.item_mes_id).filter(Boolean));
+  const itensAssinatura = dados.itens_mes.filter((i) =>
+    i.tipo === 'assinatura' && i.fatura_mes === faturaMes && !ligadas.has(i.id));
   const valorAssinaturas = soma(itensAssinatura, (i) => i.valor_real ?? i.valor_previsto);
 
   const porRegra = resumoCartao(compras);

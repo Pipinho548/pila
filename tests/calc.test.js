@@ -250,3 +250,18 @@ test('gastos de uma categoria: dia a dia (mesmo total da lista) e contas do plan
   assert.equal(g.plano, 20000);
   assert.equal(gastosDaCategoria(d, '2026-11', ['c-lazer', 'c-mercado'], '2026-11-10').diaADia, 3100);
 });
+
+test('assinatura lançada no cartão: não mexe no Livre do mês, entra no plano do mês da fatura, conta uma vez na fatura', () => {
+  const d = base();
+  d.itens_mes.push({ id: 'as1', mes: '2026-11', nome: 'Escavador', tipo: 'assinatura', valor_previsto: 990, valor_real: null, fatura_mes: '2026-11', pago: false });
+  d.lancamentos.push(
+    lanc({ data: '2026-10-05', tipo: 'entrada', valor: 300000, descricao: 'Salário' }),
+    lanc({ data: '2026-10-08', valor: 990, meio: 'cartao', regra_cartao: 'assinatura', fatura_mes: '2026-11', item_mes_id: 'as1' }),
+  );
+  assert.equal(resumoMes(d, '2026-10', '2026-10-09').livre, 300000);
+  assert.equal(resumoMes(d, '2026-11', '2026-11-09').plano, 990);
+  const f = detalheFatura(d, '2026-11', '2026-11-04');
+  assert.equal(f.assinaturas, 990);
+  assert.equal(f.total, 990);
+  assert.equal(f.origem.assinaturas, 990);
+});

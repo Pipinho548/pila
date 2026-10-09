@@ -345,19 +345,37 @@ function prepararLancar() {
   atualizarDica();
 }
 
+// Texto que explica o que acontece com uma compra no cartão
+function explicarCartao(data, regra) {
+  const { cartao_fecha_dia: fecha, cartao_vence_dia: vence } = estado.dados.config;
+  const fatura = faturaDaCompra(data || hojeSP(), fecha, vence);
+  const quando = dataCurta(vencimentoDaFatura(fatura, vence));
+  if (regra === 'uber') return `Uber no cartão: vai pra fatura de ${quando} e entra no plano de ${nomeMes(fatura)}. Não mexe no seu Livre de hoje.`;
+  if (regra === 'assinatura') return `Assinatura: não mexe no seu Livre de agora. Entra como conta no plano de ${nomeMes(fatura)}, o mês em que a fatura de ${quando} vence.`;
+  return `No cartão: já sai do seu Livre agora e fica separado pra fatura de ${quando}. Quando ela chegar, o dinheiro já está lá.`;
+}
+
 function atualizarDica() {
   const f = formLancar.elements;
   const dica = $('#lancar-dica');
-  if (f.meio.value !== 'cartao') { dica.hidden = true; return; }
-  const { cartao_fecha_dia: fecha, cartao_vence_dia: vence } = estado.dados.config;
-  const fatura = faturaDaCompra(f.data.value || hojeSP(), fecha, vence);
-  const quando = dataCurta(vencimentoDaFatura(fatura, vence));
+  const regra = $('#lancar-regra');
+  if (f.meio.value !== 'cartao') { dica.hidden = true; regra.hidden = true; return; }
   const ehUber = categoria(f.categoria.value)?.nome === 'Transporte';
+  regra.hidden = ehUber;
   dica.hidden = false;
   dica.classList.remove('aviso-cartao');
-  dica.textContent = ehUber
-    ? `Uber no cartão: vai pra fatura de ${quando} e entra no plano desse mês. Não mexe no seu Livre de hoje.`
-    : `No cartão: já sai do seu Livre agora e fica separado pra fatura de ${quando}. Quando ela chegar, o dinheiro já está lá.`;
+  dica.textContent = explicarCartao(f.data.value, ehUber ? 'uber' : f.regra.value);
+}
+
+// Assinatura lançada à mão: vira uma conta no plano do mês em que a fatura vence,
+// ligada à compra (assim conta uma vez só e não mexe no Livre do mês da compra).
+function contaDaAssinatura(compra, nome) {
+  const { cartao_vence_dia: vence } = estado.dados.config;
+  return {
+    mes: compra.fatura_mes, nome, tipo: 'assinatura', valor_previsto: compra.valor,
+    vencimento: vencimentoDaFatura(compra.fatura_mes, vence), categoria_id: compra.categoria_id,
+    fatura_mes: compra.fatura_mes, observacao: `Compra no cartão em ${dataCurta(compra.data)}`, ordem: 98,
+  };
 }
 
 formLancar.addEventListener('change', atualizarDica);
@@ -388,23 +406,41 @@ formLancar.addEventListener('submit', async (e) => {
     meio,
     tipo: 'gasto',
     fatura_mes: cartao ? faturaDaCompra(data, fecha, vence) : null,
-    regra_cartao: cartao ? (cat.nome === 'Transporte' ? 'uber' : 'outra') : null,
+    regra_cartao: cartao ? (cat.nome === 'Transporte' ? 'uber' : (f.regra.value || 'outra')) : null,
   };
+  const assinatura = linha.regra_cartao === 'assinatura';
 
   erro.textContent = '';
   try {
     await ocupado(formLancar.querySelector('[type=submit]'), 'Lançando...', async () => {
-      const [nova] = await inserir('lancamentos', [linha]);
-      trocar('lancamentos', nova);
+      if (assinatura) {
+        const [conta] = await inserir('itens_mes', [contaDaAssinatura(linha, linha.descricao || cat.nome)]);
+        trocar('itens_mes', conta);
+        linha.item_mes_id = conta.id;
+      }
+      try {
+        const [nova] = await inserir('lancamentos', [linha]);
+        trocar('lancamentos', nova);
+      } catch (e) {
+        // Não deixa a conta da assinatura sozinha no plano se a compra não gravou
+        if (assinatura) {
+          await apagar('itens_mes', linha.item_mes_id).catch(() => {});
+          estado.dados.itens_mes = estado.dados.itens_mes.filter((i) => i.id !== linha.item_mes_id);
+        }
+        throw e;
+      }
       salvarCache();
     });
     folhaLancar.close();
     render();
-    avisar(`Lançado. ${textoPorDia()}`);
+    avisar(assinatura
+      ? `Assinatura lançada: entrou no plano de ${nomeMes(linha.fatura_mes)}. ${textoPorDia()}`
+      : `Lançado. ${textoPorDia()}`);
   } catch (err) {
-    if (!semInternet(err)) {
+    if (assinatura || !semInternet(err)) {
+      // Assinatura mexe em duas tabelas: só com internet
       console.warn(err);
-      erro.textContent = ERRO_REDE;
+      erro.textContent = assinatura && semInternet(err) ? 'Assinatura precisa de internet pra entrar no plano. Tenta de novo quando voltar.' : ERRO_REDE;
       return;
     }
     // Sem internet: guarda no celular e manda depois
@@ -666,7 +702,14 @@ folhaEditar.addEventListener('click', async (e) => {
     await ocupado(alvo, 'Apagando...', async () => {
       if (l.pendente) tirarDaFila(estado.usuario.id, l.cliente_id);
       else if (l.tipo === 'pagamento_fatura') await desfazerPagamentoFatura(l.fatura_mes);
-      else await apagar('lancamentos', l.id);
+      else {
+        await apagar('lancamentos', l.id);
+        // Assinatura lançada à mão: some a conta dela no plano também
+        if (l.regra_cartao === 'assinatura' && l.item_mes_id) {
+          await apagar('itens_mes', l.item_mes_id);
+          estado.dados.itens_mes = estado.dados.itens_mes.filter((i) => i.id !== l.item_mes_id);
+        }
+      }
       estado.dados.lancamentos = estado.dados.lancamentos.filter((x) => x.id !== l.id);
       salvarCache();
     });
@@ -698,20 +741,38 @@ folhaEditar.addEventListener('submit', async (e) => {
     campos.meio = meio;
     if (meio === 'cartao') {
       campos.fatura_mes = faturaDaCompra(campos.data, fecha, vence);
-      campos.regra_cartao = l.regra_cartao === 'assinatura' ? 'assinatura' : (cat.nome === 'Transporte' ? 'uber' : 'outra');
+      campos.regra_cartao = cat.nome === 'Transporte' ? 'uber' : (f.regra?.value || 'outra');
     } else {
       campos.fatura_mes = null;
       campos.regra_cartao = null;
     }
   }
+  const eraAssinatura = l.regra_cartao === 'assinatura' && l.item_mes_id;
+  const viraAssinatura = campos.regra_cartao === 'assinatura';
   try {
     await ocupado(form.querySelector('[type=submit]'), 'Salvando...', async () => {
+      // A conta da assinatura no plano acompanha a compra
+      if (viraAssinatura) {
+        const conta = contaDaAssinatura({ ...l, ...campos }, campos.descricao || categoria(campos.categoria_id)?.nome || 'Assinatura');
+        if (eraAssinatura) trocar('itens_mes', await atualizar('itens_mes', l.item_mes_id, conta));
+        else {
+          const [nova] = await inserir('itens_mes', [conta]);
+          trocar('itens_mes', nova);
+          campos.item_mes_id = nova.id;
+        }
+      } else if (eraAssinatura) {
+        await apagar('itens_mes', l.item_mes_id);
+        estado.dados.itens_mes = estado.dados.itens_mes.filter((i) => i.id !== l.item_mes_id);
+        campos.item_mes_id = null;
+      }
       trocar('lancamentos', await atualizar('lancamentos', l.id, campos));
       salvarCache();
     });
     folhaEditar.close();
     render();
-    avisar(`Salvo. ${textoPorDia()}`);
+    avisar(viraAssinatura && !eraAssinatura
+      ? `Agora é assinatura: entrou no plano de ${nomeMes(campos.fatura_mes)}. ${textoPorDia()}`
+      : `Salvo. ${textoPorDia()}`);
   } catch (err) {
     console.warn(err);
     erro.textContent = ERRO_REDE;

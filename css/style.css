@@ -634,3 +634,7 @@ body::before {
 @media (prefers-reduced-motion: no-preference) {
   .fab { transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 }
+
+/* "Conta como" só aparece quando o meio é Cartão */
+.regra-cartao { display: grid; gap: 6px; }
+#form-editar:not(:has(input[name="meio"][value="cartao"]:checked)) .regra-cartao { display: none; }
