@@ -82,6 +82,20 @@ async function avisosDoDia(admin: ReturnType<typeof createClient>, usuario: stri
   return avisos;
 }
 
+// Chave secreta do projeto: o Supabase dá pela variável antiga ou pelas novas, depende da conta
+function chaveSecreta(): string {
+  const direta = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SECRET_KEY');
+  if (direta) return direta;
+  const varias = Deno.env.get('SUPABASE_SECRET_KEYS');
+  if (varias) {
+    try {
+      const chaves = JSON.parse(varias);
+      return chaves.default ?? Object.values(chaves)[0];
+    } catch { /* segue pro erro */ }
+  }
+  throw new Error('A função não achou a chave secreta do Supabase');
+}
+
 function json(corpo: unknown, status = 200) {
   return new Response(JSON.stringify(corpo), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 }
@@ -89,7 +103,7 @@ function json(corpo: unknown, status = 200) {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
-  const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
+  const admin = createClient(Deno.env.get('SUPABASE_URL')!, chaveSecreta(), {
     auth: { persistSession: false },
   });
 
