@@ -1015,7 +1015,7 @@ function cartaoAvisos(situacao) {
     ligado: `
       <p class="mini">Ligados neste aparelho. Chegam às 9h quando tem conta vencendo hoje ou amanhã, e quando o prazo de uma dívida está chegando.</p>
       <div class="botoes-lado">
-        <button type="button" class="btn-secundario" data-acao="testar-avisos">Mandar um teste</button>
+        <button type="button" class="btn-secundario" data-acao="testar-avisos">Testar</button>
         <button type="button" class="btn-secundario" data-acao="desligar-avisos">Desligar</button>
       </div>`,
   };

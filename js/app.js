@@ -234,7 +234,7 @@ async function ligarAvisos(botao) {
     });
     estado.avisos = 'ligado';
     render();
-    avisar('Avisos ligados. Toca em "Mandar um teste" pra ver se chega.');
+    avisar('Avisos ligados. Toca em "Testar" pra ver se chega.');
   } catch (e) {
     console.warn(e);
     avisar('Não deu pra ligar os avisos. Confere a internet e tenta de novo.', 'erro');
