@@ -4,7 +4,6 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "dev": "node tools/servidor.mjs",
-    "icones": "node tools/gerar-icones.mjs"
+    "dev": "node tools/servidor.mjs"
   }
 }

@@ -2,7 +2,7 @@
 // Caminhos relativos porque no GitHub Pages o app roda em /pila/.
 // Mudou algum arquivo do app? Aumente a VERSAO.
 
-const VERSAO = 'pila-v3';
+const VERSAO = 'pila-v4';
 
 const SHELL = [
   './',
@@ -15,6 +15,8 @@ const SHELL = [
   './manifest.json',
   './icons/icon-192.png',
   './icons/apple-touch-icon.png',
+  './img/logo.png',
+  './img/logo-escuro.png',
 ];
 
 self.addEventListener('install', (e) => {

@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Pila</title>
   <meta name="description" content="Controle financeiro pessoal">
-  <meta name="theme-color" content="#f6f7f5" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#111412" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f7f4ec" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b1a15" media="(prefers-color-scheme: dark)">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -20,8 +20,12 @@
   <!-- Login -->
   <section id="tela-login" class="login" hidden>
     <div class="login-caixa">
-      <img src="icons/icon-192.png" alt="" class="login-logo" width="72" height="72">
-      <h1>Pila</h1>
+      <h1 class="login-logo">
+        <picture>
+          <source srcset="img/logo-escuro.png" media="(prefers-color-scheme: dark)">
+          <img src="img/logo.png" alt="Pila" width="208" height="72">
+        </picture>
+      </h1>
       <p class="sub">Seu dinheiro em 5 segundos.</p>
 
       <p id="aviso-config" class="aviso" hidden>
