@@ -488,7 +488,8 @@ export function alertas(dados, hoje) {
   const lista = [];
   const mes = resumoMes(dados, mesDe(hoje), hoje);
   for (const item of mes.pendentes) {
-    if (!item.vencimento) continue;
+    // Contas pagas junto com a fatura já aparecem no aviso da fatura
+    if (!item.vencimento || TIPOS_DA_FATURA.includes(item.tipo)) continue;
     if (item.vencimento < hoje) lista.push({ tipo: 'atrasada', item });
     else if (item.vencimento <= somarDias(hoje, 3)) lista.push({ tipo: 'vence', item });
   }

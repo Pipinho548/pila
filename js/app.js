@@ -168,11 +168,16 @@ function ctx() {
   return { ...estado, hoje: hojeSP(), naFila: estado.usuario ? lerFila(estado.usuario.id).length : 0 };
 }
 
+let pilhaAnimou = false;
+
 function render() {
   if (!estado.usuario) return;
   const rota = rotaAtual();
   estado.mesVisto ??= mesDe(hojeSP());
-  conteudo.innerHTML = ROTAS[rota](ctx());
+  // A pilha do mês cresce só na primeira vez que a tela Hoje aparece com dados
+  const animar = rota === 'hoje' && Boolean(estado.dados?.config) && !pilhaAnimou;
+  if (animar) pilhaAnimou = true;
+  conteudo.innerHTML = ROTAS[rota]({ ...ctx(), animar });
   const aba = ABA_DA_ROTA[rota] ?? rota;
   document.querySelectorAll('.abas a').forEach((a) => {
     if (a.dataset.aba === aba) a.setAttribute('aria-current', 'page');

@@ -1,5 +1,5 @@
 // O que aparece em cada tela. Só monta HTML: quem reage aos toques é o app.js.
-import { moeda, menos, dataBR, dataCurta, nomeMes, mesDe, esc, diaDaSemana, valorParaTexto } from './format.js';
+import { moeda, menos, dataBR, dataCurta, nomeMes, mesDe, esc, valorParaTexto } from './format.js';
 import * as calc from './calc.js';
 
 export const MEIOS = { pix: 'Pix', debito: 'Débito', cartao: 'Cartão', boleto: 'Boleto', dinheiro: 'Dinheiro' };
@@ -31,8 +31,8 @@ export function linhaLancamento(dados, l) {
   const cat = categoriaDe(dados, l.categoria_id);
   const titulo = l.descricao || cat?.nome || 'Gasto';
   const detalhes = [dataCurta(l.data), MEIOS[l.meio], l.regra_cartao === 'uber' && !l.antes_do_app ? 'vai pra fatura' : null,
-    l.pendente ? '⏳ esperando internet' : null]
-    .filter(Boolean).join(' · ');
+    l.pendente ? 'esperando internet' : null]
+    .filter(Boolean).join(', ');
   const entrada = l.tipo === 'entrada' || l.tipo === 'resgate_caixinha' || (l.tipo === 'ajuste' && l.valor > 0);
   const valor = l.tipo === 'ajuste' ? Math.abs(l.valor) : l.valor;
   return `
@@ -55,7 +55,7 @@ export function folhaLancamento(l, ctx) {
   const { dados } = ctx;
   const cat = categoriaDe(dados, l.categoria_id);
   const titulo = l.descricao || cat?.nome || NOMES_TIPO_LANCAMENTO[l.tipo];
-  const sub = [NOMES_TIPO_LANCAMENTO[l.tipo], dataBR(l.data), MEIOS[l.meio]].filter(Boolean).join(' · ');
+  const sub = [NOMES_TIPO_LANCAMENTO[l.tipo], dataBR(l.data), MEIOS[l.meio]].filter(Boolean).join(', ');
   const topo = `
     <div class="folha-topo"><h2 tabindex="-1" autofocus>${esc(titulo)}</h2><button type="button" class="btn-fechar" data-fechar aria-label="Fechar">✕</button></div>
     <p class="sub">${esc(sub)}</p>
@@ -71,7 +71,7 @@ export function folhaLancamento(l, ctx) {
 
   if (l.pendente) {
     return `${topo}
-      <p class="nota">⏳ Esse lançamento foi feito sem internet. Ele vai pro Supabase sozinho quando a internet voltar.</p>
+      <p class="nota">Esse lançamento foi feito sem internet. Ele vai pro Supabase sozinho quando a internet voltar.</p>
       <button type="button" class="btn-perigo" data-acao="apagar-lancamento">Apagar lançamento</button>`;
   }
 
@@ -128,126 +128,165 @@ export function carregando(ctx) {
   return ctx.dados === null ? '<p class="vazio">Carregando...</p>' : '';
 }
 
+// ---------- Peças visuais ----------
+
+// Valor com o "R$" e os centavos menores: os reais leem de relance
+export function dinheiro(centavos) {
+  const v = centavos || 0;
+  const abs = Math.abs(v);
+  const reais = Math.trunc(abs / 100).toLocaleString('pt-BR');
+  const cent = String(abs % 100).padStart(2, '0');
+  return `<span class="dinheiro"><span class="moeda">${v < 0 ? '-' : ''}R$</span>${reais}<span class="centavos">,${cent}</span></span>`;
+}
+
+// A pilha do mês: as três folhas da logo viram o gráfico.
+// Em cima o que está livre (bege), no meio o dia a dia (verde), embaixo as contas do plano (verde escuro).
+function pilhaDoMes(mes, dados, animar) {
+  const livre = mes.salarioCaiu ? mes.livre : mes.livre + dados.config.salario;
+  const partes = [
+    { nome: mes.salarioCaiu ? 'Livre' : 'Livre quando o salário cair', valor: livre, cor: 'palha' },
+    { nome: 'Dia a dia', valor: mes.gastos + mes.depositos, cor: 'erva' },
+    { nome: 'Contas', valor: mes.plano, cor: 'pinheiro' },
+  ];
+  const total = calc.soma(partes, (p) => Math.max(0, p.valor)) || 1;
+  return `
+    <a class="pilha${animar ? ' animar' : ''}" href="#mes" aria-label="Ver o mês">
+      ${partes.map((p) => `
+        <span class="pilha-linha">
+          <span class="pilha-trilho"><span class="folha-barra ${p.cor}" style="--p:${(Math.max(0, p.valor) / total).toFixed(3)}"></span></span>
+          <span class="pilha-nome">${p.nome}</span>
+          <span class="pilha-valor num${neg(p.valor)}">${moeda(p.valor)}</span>
+        </span>`).join('')}
+    </a>`;
+}
+
+// Data relativa pras contas: hoje, amanhã, em 3 dias, 15/11
+function quando(data, hoje) {
+  const dias = calc.diasEntre(hoje, data);
+  if (dias < 0) return `venceu ${dataCurta(data)}`;
+  if (dias === 0) return 'vence hoje';
+  if (dias === 1) return 'vence amanhã';
+  if (dias <= 6) return `vence em ${dias} dias`;
+  return `vence ${dataCurta(data)}`;
+}
+
+// 'sexta, 9 de outubro'
+function dataLonga(data) {
+  const [a, m, d] = data.split('-').map(Number);
+  return new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(a, m - 1, d)))
+    .replace('-feira', '');
+}
+
 // ---------- Hoje ----------
 
 export function telaHoje(ctx) {
   const { dados, hoje } = ctx;
-  const topo = `
-    <header class="cabecalho">
-      <h1>Hoje</h1>
-      <p class="sub">${esc(diaDaSemana(hoje))}, ${dataBR(hoje)}</p>
-    </header>${avisoOffline(ctx)}`;
-  if (!dados) return topo + carregando(ctx);
-  if (!dados.config) return topo + cartaoImportar();
+  const data = `<p class="data-hoje">${esc(dataLonga(hoje))}</p>${avisoOffline(ctx)}`;
+  if (!dados) return `<h1 class="so-leitor">Hoje</h1>${data}${carregando(ctx)}`;
+  if (!dados.config) return `<h1 class="so-leitor">Hoje</h1>${data}${cartaoImportar()}`;
 
   const mes = calc.resumoMes(dados, mesDe(hoje), hoje);
-  const q = calc.quantoPossoGastar(mes.livre, calc.gastosDoDia(dados, hoje), hoje);
+  const gastosHoje = calc.gastosDoDia(dados, hoje);
+  const q = calc.quantoPossoGastar(mes.livre, gastosHoje, hoje);
   const fatura = calc.faturaAberta(dados, hoje);
   const paraPagar = calc.faturasParaPagar(dados, hoje);
   const reserva = dados.caixinhas[0];
   const alertas = calc.alertas(dados, hoje);
   const ultimos = [...dados.lancamentos].sort(maisRecentes).slice(0, 5);
   const paraFechar = calc.mesParaFechar(dados, hoje);
-
-  let sub;
-  if (q.aindaDaHoje < 0) {
-    sub = `Passou ${moeda(-q.aindaDaHoje)} hoje. Daqui pra frente fica ${moeda(q.porDia)} por dia.`;
-  } else if (q.diasDepoisDeHoje === 0) {
-    sub = 'Último dia do mês.';
-  } else {
-    sub = `Daqui pra frente: ${moeda(q.porDia)} por dia até ${dataCurta(q.ultimoDia)}`;
-  }
+  const salario = dados.config.salario;
 
   // Antes do salário cair o Livre fica negativo (dinheiro que não caiu não existe).
   // Em vez de um "por dia" negativo, mostra quanto vai dar quando ele cair.
-  const salario = dados.config.salario;
-  const quandoCair = calc.quantoPossoGastar(mes.livre + salario, calc.gastosDoDia(dados, hoje), hoje);
-  const destaque = mes.salarioCaiu ? `
-    <section class="cartao destaque">
-      <p class="rotulo">Ainda dá hoje</p>
-      <p class="valor-grande num${neg(q.aindaDaHoje)}">${moeda(q.aindaDaHoje)}</p>
-      <p class="linha-sub${neg(q.aindaDaHoje)}">${sub}</p>
-    </section>` : `
-    <section class="cartao destaque">
-      <p class="rotulo">Salário ainda não caiu</p>
-      <p class="valor-grande num${neg(quandoCair.porDia)}">${moeda(quandoCair.porDia)}<span class="unidade"> por dia</span></p>
-      <p class="linha-sub">É o que vai dar até ${dataCurta(quandoCair.ultimoDia)} quando os ${moeda(salario)} caírem (dia ${dados.config.dia_salario}).</p>
-      <button type="button" class="btn-primario largo" data-acao="confirmar-salario">Salário caiu</button>
-    </section>`;
+  let heroi;
+  if (!mes.salarioCaiu) {
+    const quandoCair = calc.quantoPossoGastar(mes.livre + salario, gastosHoje, hoje);
+    heroi = `
+      <section class="heroi">
+        <h1 class="heroi-rotulo">Quando o salário cair</h1>
+        <p class="heroi-valor num${neg(quandoCair.porDia)}">${dinheiro(quandoCair.porDia)}<span class="unidade">por dia</span></p>
+        <p class="heroi-sub">até ${dataCurta(quandoCair.ultimoDia)}. O salário de ${moeda(salario)} cai dia ${dados.config.dia_salario}.</p>
+        <button type="button" class="btn-primario largo" data-acao="confirmar-salario">Salário caiu</button>
+      </section>`;
+  } else {
+    let sub;
+    if (q.aindaDaHoje < 0) sub = `Passou ${moeda(-q.aindaDaHoje)} hoje. Daqui pra frente fica ${moeda(q.porDia)} por dia.`;
+    else if (q.diasDepoisDeHoje === 0) sub = 'Último dia do mês.';
+    else sub = `Daqui pra frente, ${moeda(q.porDia)} por dia até ${dataCurta(q.ultimoDia)}.`;
+    heroi = `
+      <section class="heroi">
+        <h1 class="heroi-rotulo">Ainda dá hoje</h1>
+        <p class="heroi-valor num${neg(q.aindaDaHoje)}">${dinheiro(q.aindaDaHoje)}</p>
+        <p class="heroi-sub">${sub}</p>
+      </section>`;
+  }
 
-  return `${topo}
-    ${destaque}
+  const proximas = mes.pendentes.slice(0, 3);
+  const faltam = mes.pendentes.length - proximas.length;
 
-    ${ctx.naFila ? `<p class="faixa">⏳ ${ctx.naFila === 1 ? '1 lançamento esperando' : `${ctx.naFila} lançamentos esperando`} internet pra ir pro Supabase.</p>` : ''}
+  return `${data}
+    ${heroi}
+    ${pilhaDoMes(mes, dados, ctx.animar)}
+
+    ${ctx.naFila ? `<p class="faixa">${ctx.naFila === 1 ? '1 lançamento esperando' : `${ctx.naFila} lançamentos esperando`} internet pra ir pro Supabase.</p>` : ''}
     ${paraFechar ? cartaoFecharMes(paraFechar) : ''}
-
-    <div class="grade-2">
-      <a class="cartao toque" href="#mes">
-        <p class="rotulo">${mes.salarioCaiu ? 'Livre do mês' : 'Sobra prevista'}</p>
-        <p class="valor-medio num${neg(mes.salarioCaiu ? mes.livre : mes.livre + salario)}">${moeda(mes.salarioCaiu ? mes.livre : mes.livre + salario)}</p>
-        ${mes.salarioCaiu ? '' : '<p class="mini">quando o salário cair</p>'}
-      </a>
-      <a class="cartao toque" href="#mes">
-        <p class="rotulo">Falta pagar</p>
-        <p class="valor-medio num">${moeda(mes.faltaPagar)}</p>
-        <p class="mini">${mes.proxima
-          ? `${esc(mes.proxima.nome)}${mes.proxima.vencimento ? `, ${dataCurta(mes.proxima.vencimento)}` : ''}`
-          : 'Tudo pago'}</p>
-      </a>
-    </div>
 
     ${paraPagar.map((f) => `
     <a class="cartao toque alerta-cartao linha-unica" href="#fatura">
-      <span><span class="rotulo">Fatura de ${dataCurta(f.vence)} fechou</span><br><b class="num">${moeda(f.total)}</b></span>
-      <span class="btn-mini">Pagar ›</span>
+      <span><span class="rotulo">A fatura de ${dataCurta(f.vence)} fechou</span><br><b class="num">${moeda(f.total)}</b></span>
+      <span class="btn-mini">Pagar</span>
     </a>`).join('')}
 
-    <a class="cartao toque" href="#fatura">
-      <div class="cartao-topo">
-        <p class="rotulo">Fatura aberta · vence ${dataCurta(fatura.vence)}</p>
-        <p class="valor-medio num">${moeda(fatura.total)}</p>
-      </div>
-      <div class="tres">
-        <div><p class="mini">Uber</p><p class="num">${moeda(fatura.uber)}</p></div>
-        <div><p class="mini">Assinaturas</p><p class="num">${moeda(fatura.assinaturas)}</p></div>
-        <div><p class="mini">Outras</p><p class="num">${moeda(fatura.outras)}</p></div>
-      </div>
-    </a>
+    <section class="cartao grupo">
+      <a class="grupo-topo" href="#mes"><h2>Falta pagar</h2><span class="num">${moeda(mes.faltaPagar)}</span></a>
+      ${proximas.length ? `<ul class="lista">${proximas.map((i) => `
+        <li><button type="button" class="botao-linha linha" data-acao="abrir-item" data-id="${i.id}">
+          <span class="linha-texto"><span class="linha-titulo">${esc(i.nome)}</span>
+            <span class="mini${i.vencimento && i.vencimento < hoje ? ' negativo' : ''}">${i.vencimento ? quando(i.vencimento, hoje) : 'sem data'}</span></span>
+          <span class="num linha-valor">${moeda(calc.valorItem(i, dados, hoje))}</span>
+        </button></li>`).join('')}</ul>
+        ${faltam > 0 ? `<a class="grupo-mais" href="#mes">Mais ${faltam} ${faltam === 1 ? 'conta' : 'contas'} no mês</a>` : ''}`
+        : '<p class="vazio">Tudo pago este mês.</p>'}
+    </section>
 
-    ${reserva ? `
-    <a class="cartao toque linha-unica" href="#caixinhas">
-      <span>🏦 ${esc(reserva.nome)}</span>
-      <span class="num forte">${moeda(calc.saldoCaixinha(reserva, dados.lancamentos))} ›</span>
-    </a>` : ''}
+    <section class="cartao grupo">
+      <ul class="lista">
+        <li><a class="linha linha-link" href="#fatura">
+          <span class="linha-texto"><span class="linha-titulo">Fatura aberta, vence ${dataCurta(fatura.vence)}</span>
+            <span class="mini">Uber ${moeda(fatura.uber)}, assinaturas ${moeda(fatura.assinaturas)}, outras ${moeda(fatura.outras)}</span></span>
+          <span class="num linha-valor">${moeda(fatura.total)}</span>
+        </a></li>
+        ${reserva ? `
+        <li><a class="linha linha-link" href="#caixinhas">
+          <span class="linha-texto"><span class="linha-titulo">${esc(reserva.nome)}</span><span class="mini">guardado</span></span>
+          <span class="num linha-valor positivo">${moeda(calc.saldoCaixinha(reserva, dados.lancamentos))}</span>
+        </a></li>` : ''}
+      </ul>
+    </section>
 
     ${alertas.length ? `
-    <section class="cartao">
+    <section class="cartao grupo">
       <h2>Atenção</h2>
-      <ul class="lista">${alertas.map((a) => `<li class="alerta">${textoAlerta(a, hoje)}</li>`).join('')}</ul>
+      <ul class="lista alertas">${alertas.map((a) => `<li class="alerta alerta-${a.tipo}"><span>${textoAlerta(a, hoje)}</span></li>`).join('')}</ul>
     </section>` : ''}
 
-    <section class="cartao">
+    <section class="cartao grupo">
       <h2>Últimos lançamentos</h2>
       ${ultimos.length
         ? `<ul class="lista">${ultimos.map((l) => linhaLancamento(dados, l)).join('')}</ul>`
-        : '<p class="vazio">Nada lançado ainda.</p>'}
+        : '<p class="vazio">Nada lançado ainda. Toca no + pra lançar o primeiro gasto.</p>'}
     </section>`;
-}
-
-function quando(data, hoje) {
-  if (data === hoje) return 'hoje';
-  if (data === calc.somarDias(hoje, 1)) return 'amanhã';
-  return dataCurta(data);
 }
 
 function textoAlerta(a, hoje) {
   switch (a.tipo) {
-    case 'atrasada': return `⚠️ <b>${esc(a.item.nome)}</b> venceu ${dataCurta(a.item.vencimento)} e não foi marcada como paga.`;
-    case 'vence': return `📅 <b>${esc(a.item.nome)}</b> vence ${quando(a.item.vencimento, hoje)}.`;
-    case 'limite': return `📊 <b>${esc(a.limite.nome)}</b>: ${a.limite.pct}% do limite.`;
-    case 'cartao': return `💳 ${a.quantas === 1 ? '1 compra' : `${a.quantas} compras`} no cartão fora da regra este mês (${moeda(a.total)}). Cartão é só pra Uber e assinatura.`;
-    case 'fatura': return `💳 Fatura de <b>${moeda(a.fatura.total)}</b> vence ${quando(a.fatura.vence, hoje)}. <a href="#fatura">Pagar</a>`;
-    case 'prazo': return `⏳ <b>${esc(a.divida.nome)}</b>: prazo até ${dataBR(a.divida.prazo)}. <a href="#dividas">Ver</a>`;
+    case 'atrasada': return `<b>${esc(a.item.nome)}</b> venceu ${dataCurta(a.item.vencimento)} e não foi marcada como paga.`;
+    case 'vence': return `<b>${esc(a.item.nome)}</b> ${quando(a.item.vencimento, hoje)}.`;
+    case 'limite': return `<b>${esc(a.limite.nome)}</b> já usou ${a.limite.pct}% do limite.`;
+    case 'cartao': return `${a.quantas === 1 ? '1 compra' : `${a.quantas} compras`} no cartão fora da regra este mês (${moeda(a.total)}). Cartão é só pra Uber e assinatura.`;
+    case 'fatura': return `A fatura de <b>${moeda(a.fatura.total)}</b> ${quando(a.fatura.vence, hoje)}. <a href="#fatura">Pagar</a>`;
+    case 'prazo': return `<b>${esc(a.divida.nome)}</b>: o prazo acaba ${dataBR(a.divida.prazo)}. <a href="#dividas">Ver</a>`;
     default: return '';
   }
 }
@@ -278,7 +317,7 @@ function linhaItem(item, dados, hoje) {
         <span class="check${item.pago ? ' marcado' : ''}" aria-label="${item.pago ? 'Pago' : 'Não pago'}"></span>
         <span class="linha-texto">
           <span class="linha-titulo">${esc(item.nome)}</span>
-          <span class="mini${atrasada ? ' negativo' : ''}">${esc(detalhes.join(' · '))}</span>
+          <span class="mini${atrasada ? ' negativo' : ''}">${esc(detalhes.join(', '))}</span>
           ${item.observacao ? `<span class="mini obs">${esc(item.observacao)}</span>` : ''}
         </span>
         <span class="num linha-valor">${moeda(valor)}</span>
@@ -341,8 +380,8 @@ export function telaMes(ctx) {
     <section class="cartao">
       <h2>Contas do mês</h2>
       ${r.itens.length ? `
-        <ul class="lista">${r.itens.map((i) => linhaItem(i, dados, hoje)).join('')}</ul>
-        <p class="rodape num">Total ${moeda(r.plano)} · Falta pagar ${moeda(r.faltaPagar)}</p>`
+        <ul class="lista">${[...r.itens.filter((i) => !i.pago), ...r.itens.filter((i) => i.pago)].map((i) => linhaItem(i, dados, hoje)).join('')}</ul>
+        <p class="rodape num">Total ${moeda(r.plano)}, falta pagar ${moeda(r.faltaPagar)}</p>`
         : '<p class="vazio">Nenhuma conta no plano deste mês.</p>'}
       ${mes >= mesAtual ? `<button type="button" class="btn-secundario largo" data-acao="nova-avulsa" data-mes="${mes}">+ Conta só deste mês</button>` : ''}
     </section>
@@ -396,7 +435,7 @@ function mesProjetado(mes, itens, ctx) {
         <li class="linha">
           <span class="check vazio-check" aria-hidden="true"></span>
           <span class="linha-texto"><span class="linha-titulo">${esc(i.nome)}</span>
-            <span class="mini">${esc([i.vencimento ? `vence ${dataCurta(i.vencimento)}` : '', NOMES_TIPO[i.tipo]].filter(Boolean).join(' · '))}</span></span>
+            <span class="mini">${esc([i.vencimento ? `vence ${dataCurta(i.vencimento)}` : '', NOMES_TIPO[i.tipo]].filter(Boolean).join(', '))}</span></span>
           <span class="num linha-valor">${moeda(calc.valorItem(i, dados, hoje))}</span>
         </li>` : linhaItem(i, dados, hoje))).join('')}</ul>
       <button type="button" class="btn-secundario largo" data-acao="nova-avulsa" data-mes="${mes}">+ Conta só deste mês</button>
@@ -428,7 +467,7 @@ export function folhaItem(item, ctx) {
   const valor = calc.valorItem(item, dados, hoje);
   const cat = categoriaDe(dados, item.categoria_id);
   const fixa = dados.contas_fixas.find((c) => c.id === item.conta_fixa_id);
-  const sub = [item.vencimento ? `vence ${dataBR(item.vencimento)}` : 'sem data', cat?.nome].filter(Boolean).join(' · ');
+  const sub = [item.vencimento ? `vence ${dataBR(item.vencimento)}` : 'sem data', cat?.nome].filter(Boolean).join(', ');
   const topo = `
     <div class="folha-topo"><h2 tabindex="-1" autofocus>${esc(item.nome)}</h2><button type="button" class="btn-fechar" data-fechar aria-label="Fechar">✕</button></div>
     <p class="sub">${esc(sub)}</p>
@@ -487,7 +526,7 @@ export function telaConferir(ctx) {
   let resultado = '';
   if (c) {
     if (c.diff === 0) {
-      resultado = '<section class="cartao resultado ok"><p class="valor-medio">✅ Bateu certinho</p><p class="mini">Saldo conferido e salvo.</p></section>';
+      resultado = '<section class="cartao resultado ok"><p class="valor-medio">Bateu certinho</p><p class="mini">Saldo conferido e salvo.</p></section>';
     } else if (c.ajustado) {
       resultado = `<section class="cartao resultado ok"><p class="valor-medio">Ajustado</p><p class="mini">Criei um ajuste de ${c.diff > 0 ? '+' : '-'}${moeda(Math.abs(c.diff))} e salvei o saldo de ${moeda(c.real)}.</p></section>`;
     } else {
@@ -539,7 +578,7 @@ function cartaoDividaParcelada(d, r) {
         <div class="barra grossa" role="img" aria-label="${r.pagas} de ${r.total} pagas"><span class="verde" style="width:${pct}%"></span></div>
         <p class="mini">${r.pagas} de ${r.total} pagas</p>` : ''}
       <dl class="resumo">
-        ${r.proxima ? `<div><dt>Próxima</dt><dd class="num">${dataCurta(r.proxima.vencimento)} · ${moeda(r.proxima.valor)}</dd></div>` : ''}
+        ${r.proxima ? `<div><dt>Próxima</dt><dd class="num">${moeda(r.proxima.valor)} em ${dataCurta(r.proxima.vencimento)}</dd></div>` : ''}
         <div><dt>Falta</dt><dd class="num forte">${moeda(r.falta)}</dd></div>
         ${r.ultima ? `<div><dt>Acaba em</dt><dd>${esc(nomeMes(mesDe(r.ultima.vencimento)))}</dd></div>` : ''}
       </dl>
@@ -556,15 +595,15 @@ function cartaoDividaSemData(d, dados, hoje) {
       ${d.credor ? `<p class="mini">${esc(d.credor)}</p>` : ''}
       <p class="valor-medio num">${moeda(d.valor_negociado ?? d.valor_original ?? 0)}</p>
       ${d.valor_negociado != null && d.valor_original != null
-        ? `<p class="mini">com desconto · sem desconto: <s>${moeda(d.valor_original)}</s></p>` : ''}
-      ${d.prazo ? `<p class="nota${dias != null && dias <= 30 ? ' aviso-cartao' : ''}">⏳ Prazo: ${dataBR(d.prazo)}${dias >= 0 ? ` (faltam ${dias} dias)` : ' (passou)'}</p>` : ''}
+        ? `<p class="mini">com desconto. Sem desconto era <s>${moeda(d.valor_original)}</s></p>` : ''}
+      ${d.prazo ? `<p class="nota${dias != null && dias <= 30 ? ' aviso-cartao' : ''}">Prazo: ${dataBR(d.prazo)}${dias >= 0 ? ` (faltam ${dias} dias)` : ' (passou)'}</p>` : ''}
       ${passos.length ? `<ul class="lista passos">${passos.map((p) => `
         <li><button type="button" class="botao-linha passo${p.feito ? ' pago' : ''}" data-acao="passo" data-id="${p.id}">
           <span class="check${p.feito ? ' marcado' : ''}" aria-hidden="true"></span>
           <span class="linha-texto"><span class="linha-titulo">${esc(p.descricao)}</span>${p.data ? `<span class="mini">${dataBR(p.data)}</span>` : ''}</span>
         </button></li>`).join('')}</ul>` : ''}
       ${d.observacoes ? `<p class="mini obs">${esc(d.observacoes)}</p>` : ''}
-      ${d.link ? `<a class="btn-secundario link-botao" href="${esc(d.link)}" target="_blank" rel="noopener">Abrir site ›</a>` : ''}
+      ${d.link ? `<a class="btn-secundario link-botao" href="${esc(d.link)}" target="_blank" rel="noopener">Abrir o site</a>` : ''}
     </section>`;
 }
 
@@ -584,8 +623,8 @@ export function telaDividas(ctx) {
   return `${topo}
     <section class="cartao destaque">
       <p class="rotulo">Ainda devo</p>
-      <p class="valor-grande num">${moeda(total.total)}</p>
-      <p class="linha-sub">Parcelado: ${moeda(total.parcelado)} · Sem data: ${moeda(total.semData)}</p>
+      <p class="valor-grande num">${dinheiro(total.total)}</p>
+      <p class="linha-sub">${moeda(total.parcelado)} em parcelas e ${moeda(total.semData)} sem data</p>
     </section>
 
     ${tempo.length ? `
@@ -593,7 +632,7 @@ export function telaDividas(ctx) {
       <h2>Quando o dinheiro libera</h2>
       <ul class="lista tempo">${tempo.map((p) => `
         <li class="linha">
-          <span class="icone" aria-hidden="true">🔓</span>
+          <span class="icone" aria-hidden="true"><span class="folhinha"></span></span>
           <span class="linha-texto">
             <span class="linha-titulo">${esc(nomeMes(p.mes))}: +${moeda(p.valor)} por mês</span>
             <span class="mini">${esc(p.dividas.join(' e '))} acaba${p.dividas.length > 1 ? 'm' : ''}. A partir daí sobram +${moeda(p.acumulado)} por mês.</span>
@@ -608,9 +647,9 @@ export function telaDividas(ctx) {
 
     ${quitadas.length ? `
     <details class="cartao">
-      <summary><h2>Quitadas (${quitadas.length}) 🎉</h2></summary>
+      <summary><h2>Quitadas (${quitadas.length})</h2></summary>
       <ul class="lista">${quitadas.map(({ d }) => `
-        <li class="linha"><span class="icone" aria-hidden="true">✅</span>
+        <li class="linha"><span class="icone" aria-hidden="true"><span class="folhinha cheia"></span></span>
           <span class="linha-texto"><span class="linha-titulo">${esc(d.nome)}</span>
           ${d.quitada_em ? `<span class="mini">quitada em ${dataBR(d.quitada_em)}</span>` : ''}</span>
           <span class="num linha-valor">${moeda(d.valor_negociado ?? d.valor_original ?? 0)}</span></li>`).join('')}</ul>
@@ -636,8 +675,8 @@ function cartaoFatura(f, ctx) {
   const { dados } = ctx;
   let status;
   if (f.pagamento) status = `Paga em ${dataCurta(f.pagamento.data)}`;
-  else if (f.fechada) status = `Fechou ${dataCurta(f.fecha)} · vence ${dataCurta(f.vence)}`;
-  else status = `Aberta · fecha ${dataCurta(f.fecha)} · vence ${dataCurta(f.vence)}`;
+  else if (f.fechada) status = `Fechou ${dataCurta(f.fecha)}, vence ${dataCurta(f.vence)}`;
+  else status = `Aberta, fecha ${dataCurta(f.fecha)} e vence ${dataCurta(f.vence)}`;
   const compras = [...f.compras].sort(maisRecentes);
   return `
     <section class="cartao${!f.pagamento && f.fechada ? ' alerta-cartao' : ''}">
@@ -663,7 +702,7 @@ function cartaoFatura(f, ctx) {
         <ul class="lista">
           ${f.itensAssinatura.map((i) => `
             <li class="linha"><span class="icone" aria-hidden="true">📄</span>
-              <span class="linha-texto"><span class="linha-titulo">${esc(i.nome)}</span><span class="mini">assinatura · no plano</span></span>
+              <span class="linha-texto"><span class="linha-titulo">${esc(i.nome)}</span><span class="mini">assinatura, já no plano</span></span>
               <span class="num linha-valor">${moeda(i.valor_real ?? i.valor_previsto)}</span></li>`).join('')}
           ${compras.map((l) => linhaLancamento(dados, l)).join('')}
         </ul>
@@ -677,7 +716,7 @@ export function telaFatura(ctx) {
     <header class="cabecalho">
       <a href="#hoje" class="voltar">‹ Hoje</a>
       <h1>Cartão C6</h1>
-      ${dados?.config ? `<p class="sub">Fecha dia ${dados.config.cartao_fecha_dia} · vence dia ${dados.config.cartao_vence_dia}</p>` : ''}
+      ${dados?.config ? `<p class="sub">Fecha dia ${dados.config.cartao_fecha_dia} e vence dia ${dados.config.cartao_vence_dia}</p>` : ''}
     </header>${avisoOffline(ctx)}`;
   if (!dados) return topo + carregando(ctx);
   if (!dados.config) return topo + cartaoImportar();
@@ -702,7 +741,7 @@ export function telaFatura(ctx) {
     <details class="cartao">
       <summary><h2>Pagas</h2></summary>
       <ul class="lista">${pagas.map((f) => `
-        <li class="linha"><span class="icone" aria-hidden="true">✅</span>
+        <li class="linha"><span class="icone" aria-hidden="true"><span class="folhinha cheia"></span></span>
           <span class="linha-texto"><span class="linha-titulo">Fatura de ${dataCurta(f.vence)}</span>
           <span class="mini">paga em ${dataBR(f.pagamento.data)}</span></span>
           <span class="num linha-valor">${moeda(f.pagamento.valor)}</span></li>`).join('')}</ul>
@@ -742,7 +781,7 @@ export function telaCaixinhas(ctx) {
     return `
       <section class="cartao destaque">
         <p class="rotulo">${esc(c.nome)}</p>
-        <p class="valor-grande num">${moeda(calc.saldoCaixinha(c, dados.lancamentos))}</p>
+        <p class="valor-grande num">${dinheiro(calc.saldoCaixinha(c, dados.lancamentos))}</p>
         ${c.observacao ? `<p class="mini">${esc(c.observacao)}</p>` : ''}
         <div class="botoes-lado">
           <button type="button" class="btn-primario" data-acao="abrir-caixinha" data-id="${c.id}" data-tipo="deposito_caixinha">Guardar</button>
@@ -822,10 +861,10 @@ export function telaMais(ctx) {
     </header>${avisoOffline(ctx)}
     ${importar}
     <nav class="cartao menu">
-      <a href="#conferir"><span>🏦 Conferir saldo</span><span aria-hidden="true">›</span></a>
-      <a href="#receber"><span>🤝 A receber${aReceber ? ` <span class="mini">(${moeda(aReceber)})</span>` : ''}</span><span aria-hidden="true">›</span></a>
-      <a href="#config"><span>⚙️ Configurações</span><span aria-hidden="true">›</span></a>
-      <a href="#como"><span>📖 Como funciona</span><span aria-hidden="true">›</span></a>
+      <a href="#conferir"><span>Conferir saldo</span><span aria-hidden="true">›</span></a>
+      <a href="#receber"><span>A receber${aReceber ? ` <span class="mini">(${moeda(aReceber)})</span>` : ''}</span><span aria-hidden="true">›</span></a>
+      <a href="#config"><span>Configurações</span><span aria-hidden="true">›</span></a>
+      <a href="#como"><span>Como funciona</span><span aria-hidden="true">›</span></a>
     </nav>
     <section class="cartao">
       <h2>Regras de ouro</h2>

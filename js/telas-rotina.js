@@ -38,9 +38,9 @@ function cartaoDesejo(d, ctx) {
   let situacao;
   if (d.preco == null) situacao = '<p class="nota">Sem preço ainda. Edita e coloca o preço pra ver se cabe.</p>';
   else if (s.cabeAgora) {
-    situacao = `<p class="nota">✅ Cabe no seu Livre agora. Seu por dia vai de <b class="num">${moeda(s.porDiaAntes)}</b> pra <b class="num${neg(s.porDiaDepois)}">${moeda(s.porDiaDepois)}</b>.</p>`;
+    situacao = `<p class="nota">Cabe no seu Livre agora. Seu por dia vai de <b class="num">${moeda(s.porDiaAntes)}</b> pra <b class="num${neg(s.porDiaDepois)}">${moeda(s.porDiaDepois)}</b>.</p>`;
   } else if (s.quandoCabe) {
-    situacao = `<p class="nota aviso-cartao">⏳ Não cabe agora (Livre ${moeda(s.livre)}). Cabe na sobra prevista de <b>${esc(nomeMes(s.quandoCabe.mes))}</b> (${moeda(s.quandoCabe.sobra)}).</p>`;
+    situacao = `<p class="nota aviso-cartao">Não cabe agora (Livre ${moeda(s.livre)}). Cabe na sobra prevista de <b>${esc(nomeMes(s.quandoCabe.mes))}</b> (${moeda(s.quandoCabe.sobra)}).</p>`;
   } else {
     situacao = '<p class="nota aviso-cartao">Não cabe agora nem na sobra prevista dos próximos 12 meses.</p>';
   }
@@ -50,16 +50,16 @@ function cartaoDesejo(d, ctx) {
         <h2>${esc(d.nome)}</h2>
         ${d.preco != null ? `<p class="valor-medio num">${moeda(d.preco)}</p>` : ''}
       </div>
-      <p class="mini">${esc([loja, d.pra_quem ? `pra ${d.pra_quem.trim().toLowerCase() === 'eu' ? 'mim' : d.pra_quem}` : null, d.plano, `prioridade ${PRIORIDADE[d.prioridade] ?? 'média'}`].filter(Boolean).join(' · '))}</p>
+      <p class="mini">${esc([loja, d.pra_quem ? `pra ${d.pra_quem.trim().toLowerCase() === 'eu' ? 'mim' : d.pra_quem}` : null, d.plano, `prioridade ${PRIORIDADE[d.prioridade] ?? 'média'}`].filter(Boolean).join(', '))}</p>
       ${d.observacao ? `<p class="mini obs">${esc(d.observacao)}</p>` : ''}
-      ${s.esfriando ? `<p class="nota">❄️ Esfriando até ${quandoLibera(s.liberaEm)}. Se ainda quiser depois disso, libera o "Comprei".</p>` : ''}
+      ${s.esfriando ? `<p class="nota">Esfriando até ${quandoLibera(s.liberaEm)}. Se ainda quiser depois disso, libera o "Comprei".</p>` : ''}
       ${situacao}
-      ${d.parcelado ? '<p class="nota aviso-cartao">⚠️ Regra de ouro: nada parcelado novo até março/2027.</p>' : ''}
+      ${d.parcelado ? '<p class="nota aviso-cartao">Regra de ouro: nada parcelado novo até março/2027.</p>' : ''}
       <div class="botoes-lado">
         <button type="button" class="btn-primario" data-acao="comprei" data-id="${d.id}"${s.esfriando ? ' disabled' : ''}>Comprei</button>
         <button type="button" class="btn-secundario" data-acao="editar-desejo" data-id="${d.id}">Editar</button>
       </div>
-      ${d.link ? `<a class="btn-secundario link-botao" href="${esc(d.link)}" target="_blank" rel="noopener">Abrir${loja ? ` na ${esc(loja)}` : ' link'} ›</a>` : ''}
+      ${d.link ? `<a class="btn-secundario link-botao" href="${esc(d.link)}" target="_blank" rel="noopener">Abrir${loja ? ` na ${esc(loja)}` : ' o link'}</a>` : ''}
     </section>`;
 }
 
@@ -79,7 +79,7 @@ export function telaComprar(ctx) {
     <details class="cartao">
       <summary><h2>Comprados (${comprados.length})</h2></summary>
       <ul class="lista">${comprados.map((d) => `
-        <li class="linha"><span class="icone" aria-hidden="true">🛍️</span>
+        <li class="linha"><span class="icone" aria-hidden="true"><span class="folhinha cheia"></span></span>
           <span class="linha-texto"><span class="linha-titulo">${esc(d.nome)}</span><span class="mini">${dataBR(d.comprado_em)}</span></span>
           <span class="num linha-valor">${d.preco != null ? moeda(d.preco) : ''}</span></li>`).join('')}</ul>
     </details>` : ''}`;
@@ -113,7 +113,7 @@ export function folhaComprei(d, ctx) {
   const { dados } = ctx;
   return `${titulo(`Comprei: ${d.nome}`)}
     <p class="sub">Vira um gasto do dia a dia e sai do seu Livre.</p>
-    ${d.parcelado ? '<p class="nota aviso-cartao">⚠️ Regra de ouro: nada parcelado novo até março/2027.</p>' : ''}
+    ${d.parcelado ? '<p class="nota aviso-cartao">Regra de ouro: nada parcelado novo até março/2027.</p>' : ''}
     <form id="form-comprei" class="form" data-id="${d.id}">
       <label class="campo">Quanto pagou <input name="valor" inputmode="decimal" autocomplete="off" required value="${d.preco != null ? valorParaTexto(d.preco) : ''}"></label>
       <label class="campo">Categoria <select name="categoria" required>${opcoesCategoria(dados, null, 'Escolhe')}</select></label>
@@ -144,7 +144,7 @@ export function telaReceber(ctx) {
     ${pendentes.length ? pendentes.map((r) => `
       <section class="cartao">
         <div class="cartao-topo"><h2>${esc(r.quem)}</h2><p class="valor-medio num">${moeda(r.valor)}</p></div>
-        <p class="mini">${esc([r.motivo, r.data ? dataBR(r.data) : null].filter(Boolean).join(' · '))}</p>
+        <p class="mini">${esc([r.motivo, r.data ? dataBR(r.data) : null].filter(Boolean).join(', '))}</p>
         <div class="botoes-lado">
           <button type="button" class="btn-primario" data-acao="cobrar" data-id="${r.id}">Cobrar</button>
           <button type="button" class="btn-secundario" data-acao="recebi" data-id="${r.id}">Recebi</button>
@@ -155,7 +155,7 @@ export function telaReceber(ctx) {
     <details class="cartao">
       <summary><h2>Recebidos (${recebidos.length})</h2></summary>
       <ul class="lista">${recebidos.map((r) => `
-        <li class="linha"><span class="icone" aria-hidden="true">✅</span>
+        <li class="linha"><span class="icone" aria-hidden="true"><span class="folhinha cheia"></span></span>
           <span class="linha-texto"><span class="linha-titulo">${esc(r.quem)}</span><span class="mini">${dataBR(r.recebido_em)}</span></span>
           <span class="num linha-valor positivo">+${moeda(r.valor)}</span></li>`).join('')}</ul>
     </details>` : ''}`;
@@ -234,7 +234,7 @@ export function telaConfig(ctx) {
         <li><button type="button" class="botao-linha linha${f.ativa ? '' : ' pago'}" data-acao="editar-conta-fixa" data-id="${f.id}">
           <span class="icone" aria-hidden="true">${f.ativa ? '📌' : '💤'}</span>
           <span class="linha-texto"><span class="linha-titulo">${esc(f.nome)}</span>
-            <span class="mini">${esc([NOMES_TIPO_FIXA[f.tipo], f.dia ? `dia ${f.dia}` : null, f.ativa ? null : 'pausada'].filter(Boolean).join(' · '))}</span></span>
+            <span class="mini">${esc([NOMES_TIPO_FIXA[f.tipo], f.dia ? `dia ${f.dia}` : null, f.ativa ? null : 'pausada'].filter(Boolean).join(', '))}</span></span>
           <span class="num linha-valor">${moeda(f.valor_previsto)}</span>
         </button></li>`).join('')}</ul>
       <button type="button" class="btn-secundario largo" data-acao="nova-conta-fixa">+ Nova conta fixa</button>
