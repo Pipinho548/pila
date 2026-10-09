@@ -1,5 +1,5 @@
 // Telas da rotina: Comprar, A receber, Configurações e Como funciona.
-import { moeda, dataBR, nomeMes, mesDe, esc, valorParaTexto, FUSO } from './format.js';
+import { moeda, dataBR, dataCurta, nomeMes, mesDe, esc, valorParaTexto, FUSO } from './format.js';
 import * as calc from './calc.js';
 import { lojaDoLink, mensagemCobranca } from './links.js';
 import {
@@ -375,3 +375,89 @@ export function telaComo() {
     ${blocos.map(([t, texto]) => `<section class="cartao"><h2>${t}</h2><p>${texto}</p></section>`).join('')}`;
 }
 
+
+// ---------- Extrato do C6 ----------
+
+const num = (centavos) => `<span class="num">${moeda(centavos)}</span>`;
+
+function valorExtrato(r) {
+  return `<span class="num linha-valor${r.valor > 0 ? ' positivo' : ''}">${r.valor > 0 ? '+' : ''}${moeda(Math.abs(r.valor))}</span>`;
+}
+
+function detalheNova(r) {
+  const quando = dataCurta(r.data);
+  if (r.proposta.tipo === 'conta') return `${quando}, paga a conta ${r.proposta.nome}`;
+  if (r.proposta.tipo === 'entrada') return `${quando}, entrada`;
+  return `${quando}, ${MEIOS[r.proposta.meio] ?? 'Pix'}`;
+}
+
+function linhaNova(r, dados) {
+  return `
+    <li class="ext-linha">
+      <label class="ext-marca">
+        <input type="checkbox" name="usar" value="${r.id}"${r.proposta.marcada ? ' checked' : ''}>
+        <span class="linha-texto"><span class="linha-titulo">${esc(r.descricao)}</span><span class="mini">${esc(detalheNova(r))}</span></span>
+        ${valorExtrato(r)}
+      </label>
+      ${r.proposta.tipo === 'gasto' ? `
+      <select name="cat-${r.id}" class="ext-cat" aria-label="Categoria de ${esc(r.descricao)}">
+        ${opcoesCategoria(dados, r.proposta.categoria_id, 'Escolher categoria')}
+      </select>` : ''}
+    </li>`;
+}
+
+function linhaVista(r, detalhe) {
+  return `
+    <li class="linha">
+      <span class="linha-texto"><span class="linha-titulo">${esc(r.descricao)}</span><span class="mini">${esc(`${dataCurta(r.data)}, ${detalhe}`)}</span></span>
+      ${valorExtrato(r)}
+    </li>`;
+}
+
+export function folhaExtrato(a, ctx) {
+  const { dados } = ctx;
+  const de = (situacoes) => a.linhas.filter((r) => situacoes.includes(r.situacao));
+  const novas = de(['nova']);
+  const noApp = de(['no-app', 'importada']).reverse();
+  const fora = de(['fora']).reverse();
+  const antigas = de(['antiga']);
+  const marcadas = novas.filter((r) => r.proposta.marcada).length;
+
+  let saldo = '';
+  if (a.saldo) {
+    const diferenca = a.saldo.valor - a.saldo.esperado;
+    saldo = `
+    <div class="cartao-topo bloco-topo">
+      <h3>Saldo no banco em ${dataCurta(a.saldo.data)}</h3>
+      <p class="valor-medio num">${moeda(a.saldo.valor)}</p>
+    </div>
+    <p class="mini">${diferenca === 0
+      ? 'Bate com o app.'
+      : `O app esperava ${num(a.saldo.esperado)}, diferença de ${num(Math.abs(diferenca))}. ${novas.length ? 'Lançar o que falta deve resolver. Se não resolver, ajusta' : 'Ajusta'} em Conferir saldo.`}</p>`;
+  }
+
+  return `${titulo('Extrato do C6')}
+    <p class="sub">${a.de ? `De ${dataCurta(a.de)} a ${dataCurta(a.ate)}, ${a.linhas.length} transações` : 'Sem transações'}</p>
+    ${saldo}
+    <div class="cartao-topo bloco-topo"><h3>Falta lançar</h3><p class="mini">${novas.length}</p></div>
+    ${novas.length ? `
+    <form id="form-extrato" class="form">
+      <p class="mini">Marca o que vai pro app. Gasto precisa de categoria.</p>
+      <ul class="lista ext-lista">${novas.map((r) => linhaNova(r, dados)).join('')}</ul>
+      <button type="submit" class="btn-primario">${marcadas ? `Lançar ${marcadas}` : 'Marca o que lançar'}</button>
+      <p class="erro" role="alert"></p>
+    </form>` : '<p class="vazio">Nada novo: o que está no extrato já está no app.</p>'}
+    ${noApp.length ? `
+    <details class="ext-mais">
+      <summary>Já estão no app (${noApp.length})</summary>
+      <ul class="lista">${noApp.map((r) => linhaVista(r, r.situacao === 'importada'
+        ? 'importado do extrato'
+        : `lançado como ${r.comQue.map((l) => l.descricao || 'gasto').join(' + ')}`)).join('')}</ul>
+    </details>` : ''}
+    ${fora.length ? `
+    <details class="ext-mais">
+      <summary>Ficam de fora (${fora.length})</summary>
+      <ul class="lista">${fora.map((r) => linhaVista(r, r.motivo)).join('')}</ul>
+    </details>` : ''}
+    ${antigas.length ? `<p class="mini ext-antigas">${antigas.length === 1 ? '1 transação' : `${antigas.length} transações`} ${a.diaFechado ? 'até' : 'de antes de'} ${dataCurta(a.desde)} não aparecem: o saldo que você conferiu nesse dia já conta com elas.</p>` : ''}`;
+}

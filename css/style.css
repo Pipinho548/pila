@@ -790,6 +790,34 @@ details[open].cartao > summary { margin-bottom: 6px; }
 .folha .lista { margin-top: 4px; }
 .bloco-topo { margin-top: 18px; margin-bottom: 4px; }
 .bloco-topo h3 { font-size: 17px; }
+
+/* Extrato do C6: cada linha tem a marquinha, o texto, o valor e (se for gasto) a categoria */
+.ext-lista > li { padding: 12px 0; }
+.ext-marca {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+.ext-marca input { width: 22px; height: 22px; margin: 0; accent-color: var(--erva); }
+.ext-cat {
+  display: block;
+  width: calc(100% - 34px);
+  margin: 8px 0 0 34px;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1.5px solid var(--linha);
+  border-radius: var(--raio-p);
+  background: var(--superficie-2);
+  color: var(--tinta);
+}
+.ext-cat:focus { border-color: var(--palha); outline: none; }
+.ext-mais { margin-top: 14px; }
+.ext-mais > summary { cursor: pointer; padding: 10px 0; color: var(--erva-claro); font-weight: 500; }
+.ext-mais .linha .linha-texto { grid-column: 1 / 3; }
+.ext-antigas { margin-top: 14px; }
+#form-extrato [type=submit] { position: sticky; bottom: 0; }
 .btn-fechar {
   flex: none;
   border: 0; background: var(--superficie-2); color: var(--tinta-2);

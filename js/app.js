@@ -16,6 +16,7 @@ import { lerFila, guardarNaFila, tirarDaFila, semInternet } from './fila.js';
 import * as telas from './telas.js';
 import * as telasRotina from './telas-rotina.js';
 import { criarRotina } from './acoes-rotina.js';
+import { criarExtrato } from './acoes-extrato.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -37,6 +38,7 @@ const estado = {
   conferencia: null,    // resultado da última conferência de saldo
   itemAberto: null,
   lancamentoAberto: null,
+  extrato: null,        // extrato do C6 aberto (o que falta lançar)
 };
 
 // ---------- Service worker (PWA) ----------
@@ -319,6 +321,11 @@ const rotina = criarRotina({
   recarregar: carregar,
 });
 
+// ---------- Extrato do C6 ----------
+const extrato = criarExtrato({
+  estado, trocar, salvarCache, render, avisar, abrirFolha, fecharFolha, ctx, textoPorDia, pagarItem,
+});
+
 // ---------- Aviso rápido ----------
 let timerAviso;
 function avisar(texto, tipo = 'ok') {
@@ -399,6 +406,10 @@ conteudo.addEventListener('change', async (e) => {
   if (e.target.name === 'tema') { mudarTema(e.target.value); return; }
   if (e.target.id === 'arquivo-importar' && e.target.files[0]) {
     await importarArquivo(e.target.files[0]);
+    e.target.value = '';
+  }
+  if (e.target.id === 'arquivo-extrato' && e.target.files[0]) {
+    await extrato.escolheu(e.target.files[0], $('#erro-extrato'));
     e.target.value = '';
   }
 });
@@ -623,7 +634,8 @@ folhaItem.addEventListener('submit', async (e) => {
   const valor = lerValor(form.elements.valor.value);
   if (valor == null || valor < 0) { form.querySelector('.erro').textContent = 'Valor inválido.'; return; }
   try {
-    const quitou = await ocupado(form.querySelector('[type=submit]'), 'Salvando...', () => pagarItem(item, form, valor));
+    const quitou = await ocupado(form.querySelector('[type=submit]'), 'Salvando...',
+      () => pagarItem(item, { valor, data: form.elements.data.value || hojeSP(), meio: form.elements.meio?.value }));
     folhaItem.close();
     render();
     if (quitou) avisar(`🎉 Acabou! ${quitou} quitado. Esse dinheiro agora sobra todo mês.`);
@@ -634,15 +646,14 @@ folhaItem.addEventListener('submit', async (e) => {
   }
 });
 
-async function pagarItem(item, form, valor) {
-  const data = form.elements.data.value || hojeSP();
+async function pagarItem(item, { valor, data, meio, extra = {} }) {
   const deposito = item.tipo === 'deposito';
   // Pagar cria um lançamento, pra entrar na conferência com o banco
   if (valor > 0) {
     const [l] = await inserir('lancamentos', [{
       cliente_id: crypto.randomUUID(), data, valor, descricao: item.nome, categoria_id: item.categoria_id,
-      meio: deposito ? null : form.elements.meio.value, tipo: deposito ? 'deposito_caixinha' : 'gasto',
-      item_mes_id: item.id, caixinha_id: item.caixinha_id,
+      meio: deposito ? null : meio, tipo: deposito ? 'deposito_caixinha' : 'gasto',
+      item_mes_id: item.id, caixinha_id: item.caixinha_id, ...extra,
     }]);
     trocar('lancamentos', l);
   }
@@ -704,10 +715,15 @@ folhaGeral.addEventListener('click', async (e) => {
 });
 
 folhaGeral.addEventListener('input', (e) => rotina.digitou(e));
+folhaGeral.addEventListener('change', (e) => extrato.mudou(e));
 
 folhaGeral.addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = e.target;
+  if (form.id === 'form-extrato') {
+    await extrato.enviar(form);
+    return;
+  }
   if (form.id !== 'form-fatura' && form.id !== 'form-caixinha') {
     await rotina.enviar(form);
     return;

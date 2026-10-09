@@ -60,6 +60,19 @@ Peças:
 - `supabase/functions/avisos/index.ts`: função que monta e manda os avisos (Edge Functions, com "Verify JWT" desligado).
 - Segredos da função `PILA_VAPID` e `PILA_SEGREDO`, e o agendamento das 9h: ficam em `privado/` (não vão pro GitHub).
 
+## Extrato do C6
+
+Em **Mais > Extrato do C6**, escolha o extrato exportado no app do C6 (PDF é o melhor; OFX também serve).
+O arquivo é lido no próprio celular e não é enviado pra lugar nenhum. O app mostra:
+
+- **Falta lançar**: o que está no banco e não está no app. Gasto vem com a categoria sugerida; Pix que bate com uma conta do plano marca a conta como paga.
+- **Já estão no app**: bate por valor e data (até 3 dias de diferença), inclusive um Pix que você lançou em duas partes no mesmo dia.
+- **Ficam de fora**: transferência entre contas suas, pagamento da fatura, CDB e Pix que voltou.
+- O que é de antes do último saldo conferido não aparece.
+
+Importar o mesmo extrato de novo não duplica nada. A categoria que você escolher fica lembrada pra próxima vez.
+O leitor de PDF (pdf.js) vem do jsDelivr na primeira vez e fica guardado no celular.
+
 ## Backup
 
 No app, vá em **Mais > Backup**:

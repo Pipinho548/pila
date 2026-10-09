@@ -1053,7 +1053,16 @@ export function telaMais(ctx) {
       <a href="#config"><span>Configurações</span><span aria-hidden="true">›</span></a>
       <a href="#como"><span>Como funciona</span><span aria-hidden="true">›</span></a>
     </nav>
-    ${dados?.config ? cartaoAvisos(ctx.avisos) : ''}
+    ${dados?.config ? `
+    <section class="cartao">
+      <h2>Extrato do C6</h2>
+      <p class="mini">No app do C6, exporta o extrato em PDF e escolhe o arquivo aqui. O Pila mostra o que ainda falta lançar. O arquivo é lido aqui no celular e não fica guardado.</p>
+      <label class="btn-secundario largo arquivo">Escolher extrato
+        <input type="file" id="arquivo-extrato" accept=".pdf,.ofx,application/pdf,application/octet-stream,text/plain">
+      </label>
+      <p class="erro" id="erro-extrato" role="alert"></p>
+    </section>
+    ${cartaoAvisos(ctx.avisos)}` : ''}
     <section class="cartao">
       <h2>Aparência</h2>
       <fieldset class="segmentado escolha-tema">
