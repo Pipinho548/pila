@@ -7,7 +7,12 @@ const fmtMoeda = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: '
 
 // 123456 -> 'R$ 1.234,56' (dividir por 100 aqui é só para exibir, nunca para somar)
 export function moeda(centavos) {
-  return fmtMoeda.format(centavos / 100);
+  return fmtMoeda.format((centavos || 0) / 100); // || 0 evita "-R$ 0,00"
+}
+
+// Valor de saída: 1000 -> '-R$ 10,00', 0 -> 'R$ 0,00'
+export function menos(centavos) {
+  return centavos ? `-${moeda(centavos)}` : moeda(0);
 }
 
 // Texto digitado -> centavos (inteiro). Aceita '12', '12,5', '12,50', '1.234,56', '12.50'.
@@ -71,6 +76,27 @@ export function dataBR(data) {
 export function dataCurta(data) {
   const [, m, d] = data.split('-');
   return `${d}/${m}`;
+}
+
+// '2026-10-09' -> 'sexta'
+export function diaDaSemana(data) {
+  const [a, m, d] = data.split('-').map(Number);
+  return new Intl.DateTimeFormat('pt-BR', { weekday: 'long', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(a, m - 1, d)))
+    .replace('-feira', '');
+}
+
+// 1250 -> '12,50' (pra preencher campo de valor)
+export function valorParaTexto(centavos) {
+  const sinal = centavos < 0 ? '-' : '';
+  const abs = Math.abs(centavos);
+  return `${sinal}${Math.trunc(abs / 100)},${String(abs % 100).padStart(2, '0')}`;
+}
+
+// Texto seguro pra colocar no HTML
+export function esc(texto) {
+  return String(texto ?? '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',

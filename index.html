@@ -66,9 +66,9 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
         <span>Dívidas</span>
       </a>
-      <a href="#metas" data-aba="metas">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg>
-        <span>Metas</span>
+      <a href="#comprar" data-aba="comprar">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14l-1 12H6L5 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>
+        <span>Comprar</span>
       </a>
       <a href="#mais" data-aba="mais">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg>
@@ -79,12 +79,37 @@
 
   <!-- Folha de lançar gasto -->
   <dialog id="folha-lancar" class="folha">
-    <div class="folha-topo">
-      <h2>Lançar gasto</h2>
-      <button type="button" class="btn-fechar" data-fechar aria-label="Fechar">✕</button>
-    </div>
-    <p class="vazio">O lançamento chega na Fase 2.</p>
+    <form id="form-lancar" class="form" novalidate>
+      <div class="folha-topo">
+        <h2>Lançar gasto</h2>
+        <button type="button" class="btn-fechar" data-fechar aria-label="Fechar">✕</button>
+      </div>
+      <label class="campo-valor">
+        <span aria-hidden="true">R$</span>
+        <input name="valor" inputmode="decimal" autocomplete="off" placeholder="0,00" aria-label="Valor">
+      </label>
+      <div class="chips" id="lancar-categorias" role="radiogroup" aria-label="Categoria"></div>
+      <fieldset class="segmentado">
+        <legend>Meio</legend>
+        <label><input type="radio" name="meio" value="pix" checked><span>Pix</span></label>
+        <label><input type="radio" name="meio" value="debito"><span>Débito</span></label>
+        <label><input type="radio" name="meio" value="cartao"><span>Cartão</span></label>
+        <label><input type="radio" name="meio" value="dinheiro"><span>Dinheiro</span></label>
+      </fieldset>
+      <p id="lancar-dica" class="nota" hidden></p>
+      <div class="extras">
+        <input name="descricao" placeholder="Descrição (opcional)" autocomplete="off" aria-label="Descrição">
+        <input name="data" type="date" aria-label="Data">
+      </div>
+      <button type="submit" class="btn-primario">Lançar</button>
+      <p id="lancar-erro" class="erro" role="alert"></p>
+    </form>
   </dialog>
+
+  <!-- Folha de uma conta do mês -->
+  <dialog id="folha-item" class="folha"></dialog>
+
+  <div id="toast" class="toast" role="status" hidden></div>
 
   <script type="module" src="js/app.js"></script>
 </body>

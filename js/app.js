@@ -1,6 +1,15 @@
-// Telas e navegação.
-import { configurado, sessaoAtual, entrar, sair, aoMudarSessao } from './db.js';
-import { hoje, dataBR, nomeMes, mesDe } from './format.js';
+// Navegação, login e o que acontece em cada toque.
+import {
+  configurado, sessaoAtual, entrar, sair, aoMudarSessao,
+  carregarTudo, inserir, atualizar, apagarOnde, importarDados,
+} from './db.js';
+import { hoje as hojeSP, mesDe, lerValor, moeda, dataCurta, esc } from './format.js';
+import {
+  faturaDaCompra, vencimentoDaFatura, resumoMes, gastosDoDia, quantoPossoGastar,
+  saldoEsperado, somarMeses,
+} from './calc.js';
+import { montarDados } from './importar.js';
+import * as telas from './telas.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -8,8 +17,18 @@ const telaLogin = $('#tela-login');
 const app = $('#app');
 const conteudo = $('#conteudo');
 const folhaLancar = $('#folha-lancar');
+const formLancar = $('#form-lancar');
+const folhaItem = $('#folha-item');
 
-let usuario = null;
+const estado = {
+  usuario: null,
+  dados: null,          // tudo do Supabase (ou do cache, se estiver sem internet)
+  atualizadoEm: null,
+  offline: false,
+  mesVisto: null,       // mês aberto na aba Mês
+  conferencia: null,    // resultado da última conferência de saldo
+  itemAberto: null,
+};
 
 // ---------- Service worker (PWA) ----------
 if ('serviceWorker' in navigator) {
@@ -22,125 +41,418 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch((e) => console.warn('SW não registrou', e));
 }
 
-// ---------- Telas ----------
-const REGRAS_DE_OURO = [
-  'Salário caiu: paga primeiro contas e parcelas. O que sobrar é seu.',
-  'Cartão só pra Uber e assinatura.',
-  'Nada parcelado novo até março/2027.',
-  'Dinheiro que ainda não caiu não existe.',
-  'Viu algo legal? Vai pra lista de desejos e espera 2 dias.',
-];
+// ---------- Dados e cache (pra abrir sem internet) ----------
+const chaveCache = () => `pila-dados-${estado.usuario.id}`;
 
-const telas = {
-  hoje() {
-    return `
-      <header class="cabecalho">
-        <h1>Hoje</h1>
-        <p class="sub">${dataBR(hoje())}</p>
-      </header>
-      <section class="cartao destaque">
-        <p class="rotulo">Ainda dá hoje</p>
-        <p class="valor-grande num">R$ --</p>
-        <p class="linha-sub">Os números chegam na Fase 2.</p>
-      </section>
-      <div class="grade-2">
-        <section class="cartao">
-          <p class="rotulo">Livre do mês</p>
-          <p class="valor-medio num">--</p>
-        </section>
-        <section class="cartao">
-          <p class="rotulo">Falta pagar</p>
-          <p class="valor-medio num">--</p>
-        </section>
-      </div>
-      <section class="cartao">
-        <h2>Últimos lançamentos</h2>
-        <p class="vazio">Nada lançado ainda.</p>
-      </section>`;
-  },
+function salvarCache() {
+  try {
+    localStorage.setItem(chaveCache(), JSON.stringify({ dados: estado.dados, em: estado.atualizadoEm }));
+  } catch { /* sem espaço ou modo privado: segue sem cache */ }
+}
 
-  mes() {
-    return `
-      <header class="cabecalho">
-        <h1>Mês</h1>
-        <p class="sub">${nomeMes(mesDe(hoje()))}</p>
-      </header>
-      <section class="cartao">
-        <h2>Contas do mês</h2>
-        <p class="vazio">O plano do mês chega na Fase 2.</p>
-      </section>`;
-  },
+function lerCache() {
+  try {
+    const cache = JSON.parse(localStorage.getItem(chaveCache()));
+    if (cache?.dados) { estado.dados = cache.dados; estado.atualizadoEm = cache.em; }
+  } catch { /* cache estragado: ignora */ }
+}
 
-  dividas() {
-    return `
-      <header class="cabecalho"><h1>Dívidas</h1></header>
-      <section class="cartao">
-        <p class="vazio">Progresso e linha do tempo chegam na Fase 3.</p>
-      </section>`;
-  },
+async function carregar() {
+  try {
+    estado.dados = await carregarTudo();
+    estado.atualizadoEm = new Date().toISOString();
+    estado.offline = false;
+    salvarCache();
+  } catch (e) {
+    console.warn('Não deu pra buscar os dados', e);
+    estado.offline = true;
+  }
+  render();
+}
 
-  metas() {
-    return `
-      <header class="cabecalho"><h1>Metas</h1></header>
-      <section class="cartao">
-        <h2>Lista de desejos</h2>
-        <p class="vazio">Chega na Fase 4.</p>
-      </section>
-      <section class="cartao">
-        <h2>Caixinhas</h2>
-        <p class="vazio">Chega na Fase 3.</p>
-      </section>`;
-  },
+// Atualiza a lista local depois de gravar, sem buscar tudo de novo
+function trocar(tabela, linha) {
+  const lista = estado.dados[tabela];
+  const i = lista.findIndex((x) => x.id === linha.id);
+  if (i >= 0) lista[i] = linha; else lista.push(linha);
+}
 
-  mais() {
-    return `
-      <header class="cabecalho">
-        <h1>Mais</h1>
-        <p class="sub">${usuario?.email ?? ''}</p>
-      </header>
-      <section class="cartao">
-        <h2>Regras de ouro</h2>
-        <ol class="regras">${REGRAS_DE_OURO.map((r) => `<li>${r}</li>`).join('')}</ol>
-      </section>
-      <section class="cartao">
-        <button type="button" class="btn-secundario" id="btn-sair">Sair</button>
-      </section>`;
-  },
+// ---------- Navegação ----------
+const ROTAS = {
+  hoje: telas.telaHoje,
+  mes: telas.telaMes,
+  dividas: telas.telaDividas,
+  comprar: telas.telaComprar,
+  mais: telas.telaMais,
+  conferir: telas.telaConferir,
 };
+const ABA_DA_ROTA = { conferir: 'mais' };
 
-function abaAtual() {
-  const aba = location.hash.slice(1);
-  return telas[aba] ? aba : 'hoje';
+function rotaAtual() {
+  const rota = location.hash.slice(1);
+  return ROTAS[rota] ? rota : 'hoje';
+}
+
+function ctx() {
+  return { ...estado, hoje: hojeSP() };
 }
 
 function render() {
-  const aba = abaAtual();
-  conteudo.innerHTML = telas[aba]();
+  if (!estado.usuario) return;
+  const rota = rotaAtual();
+  estado.mesVisto ??= mesDe(hojeSP());
+  conteudo.innerHTML = ROTAS[rota](ctx());
+  const aba = ABA_DA_ROTA[rota] ?? rota;
   document.querySelectorAll('.abas a').forEach((a) => {
     if (a.dataset.aba === aba) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   });
-  window.scrollTo(0, 0);
 }
 
-window.addEventListener('hashchange', () => { if (usuario) render(); });
+window.addEventListener('hashchange', () => {
+  estado.conferencia = null;
+  render();
+  window.scrollTo(0, 0);
+});
 
+// Voltou pro app (ex.: abriu de novo no iPhone): busca dados novos
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && estado.usuario) carregar();
+});
+
+// ---------- Aviso rápido ----------
+let timerAviso;
+function avisar(texto, tipo = 'ok') {
+  const el = $('#toast');
+  el.textContent = texto;
+  el.dataset.tipo = tipo;
+  el.hidden = false;
+  clearTimeout(timerAviso);
+  timerAviso = setTimeout(() => { el.hidden = true; }, 3500);
+}
+
+function porDiaAgora() {
+  const hoje = hojeSP();
+  const mes = resumoMes(estado.dados, mesDe(hoje), hoje);
+  return quantoPossoGastar(mes.livre, gastosDoDia(estado.dados, hoje), hoje);
+}
+
+// ---------- Toques nas telas ----------
 conteudo.addEventListener('click', async (e) => {
-  if (e.target.closest('#btn-sair')) {
+  const alvo = e.target.closest('[data-acao]');
+  if (!alvo) return;
+  const acao = alvo.dataset.acao;
+
+  if (acao === 'sair') {
+    try { localStorage.removeItem(chaveCache()); } catch { /* ok */ }
     await sair();
+  } else if (acao === 'mes-anterior' || acao === 'mes-seguinte') {
+    estado.mesVisto = somarMeses(estado.mesVisto, acao === 'mes-anterior' ? -1 : 1);
+    render();
+  } else if (acao === 'abrir-item') {
+    abrirItem(alvo.dataset.id);
+  } else if (acao === 'confirmar-salario') {
+    await confirmarSalario(alvo);
+  } else if (acao === 'ajustar') {
+    await ajustarSaldo(alvo);
+  } else if (acao === 'cancelar-conferencia') {
+    estado.conferencia = null;
+    render();
   }
 });
 
+conteudo.addEventListener('submit', async (e) => {
+  if (e.target.id === 'form-conferir') {
+    e.preventDefault();
+    await conferirSaldo(e.target);
+  }
+});
+
+conteudo.addEventListener('change', async (e) => {
+  if (e.target.id === 'arquivo-importar' && e.target.files[0]) {
+    await importarArquivo(e.target.files[0]);
+    e.target.value = '';
+  }
+});
+
+async function ocupado(botao, texto, tarefa) {
+  const original = botao.textContent;
+  botao.disabled = true;
+  botao.textContent = texto;
+  try { return await tarefa(); } finally { botao.disabled = false; botao.textContent = original; }
+}
+
+const ERRO_REDE = 'Não deu pra salvar. Confere a internet e tenta de novo.';
+
+async function confirmarSalario(botao) {
+  try {
+    await ocupado(botao, 'Salvando...', async () => {
+      const [l] = await inserir('lancamentos', [{
+        cliente_id: crypto.randomUUID(), data: hojeSP(), valor: estado.dados.config.salario,
+        tipo: 'entrada', descricao: 'Salário',
+      }]);
+      trocar('lancamentos', l);
+      salvarCache();
+    });
+    render();
+    avisar(`Salário lançado. Daqui pra frente: ${moeda(porDiaAgora().porDia)} por dia`);
+  } catch (e) {
+    console.warn(e);
+    avisar(ERRO_REDE, 'erro');
+  }
+}
+
 // ---------- Lançar gasto ----------
-$('#btn-lancar').addEventListener('click', () => folhaLancar.showModal());
+const categoria = (id) => estado.dados.categorias.find((c) => c.id === id);
+
+$('#btn-lancar').addEventListener('click', () => {
+  if (!estado.dados?.config) {
+    avisar('Importa os dados iniciais primeiro (aba Mais).', 'erro');
+    return;
+  }
+  prepararLancar();
+  folhaLancar.showModal();
+  formLancar.elements.valor.focus();
+});
+
+function prepararLancar() {
+  formLancar.reset();
+  formLancar.elements.data.value = hojeSP();
+  $('#lancar-erro').textContent = '';
+  // Categorias mais usadas primeiro
+  const uso = new Map();
+  for (const l of estado.dados.lancamentos) {
+    if (l.tipo === 'gasto' && l.categoria_id) uso.set(l.categoria_id, (uso.get(l.categoria_id) ?? 0) + 1);
+  }
+  const lista = [...estado.dados.categorias]
+    .sort((a, b) => (uso.get(b.id) ?? 0) - (uso.get(a.id) ?? 0) || a.ordem - b.ordem);
+  $('#lancar-categorias').innerHTML = lista.map((c) => `
+    <label class="chip"><input type="radio" name="categoria" value="${c.id}"><span>${esc(c.icone ?? '')} ${esc(c.nome)}</span></label>`).join('');
+  atualizarDica();
+}
+
+function atualizarDica() {
+  const f = formLancar.elements;
+  const dica = $('#lancar-dica');
+  if (f.meio.value !== 'cartao') { dica.hidden = true; return; }
+  const { cartao_fecha_dia: fecha, cartao_vence_dia: vence } = estado.dados.config;
+  const fatura = faturaDaCompra(f.data.value || hojeSP(), fecha, vence);
+  const quando = dataCurta(vencimentoDaFatura(fatura, vence));
+  const ehUber = categoria(f.categoria.value)?.nome === 'Transporte';
+  dica.hidden = false;
+  dica.classList.toggle('aviso-cartao', !ehUber);
+  dica.textContent = ehUber
+    ? `Uber no cartão: vai pra fatura de ${quando} e entra no plano desse mês. Não mexe no seu Livre de hoje.`
+    : `Cartão é só pra Uber e assinatura. Essa compra sai do seu Livre agora e fica reservada pra fatura de ${quando}.`;
+}
+
+formLancar.addEventListener('change', atualizarDica);
+
 folhaLancar.addEventListener('click', (e) => {
-  // Fecha no X ou tocando fora da folha
   if (e.target === folhaLancar || e.target.closest('[data-fechar]')) folhaLancar.close();
 });
 
+formLancar.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = formLancar.elements;
+  const erro = $('#lancar-erro');
+  const valor = lerValor(f.valor.value);
+  if (!valor || valor <= 0) { erro.textContent = 'Digita o valor.'; f.valor.focus(); return; }
+  const cat = categoria(f.categoria.value);
+  if (!cat) { erro.textContent = 'Escolhe uma categoria.'; return; }
+
+  const { cartao_fecha_dia: fecha, cartao_vence_dia: vence } = estado.dados.config;
+  const meio = f.meio.value || 'pix';
+  const data = f.data.value || hojeSP();
+  const cartao = meio === 'cartao';
+  const linha = {
+    cliente_id: crypto.randomUUID(),
+    data,
+    valor,
+    descricao: f.descricao.value.trim() || null,
+    categoria_id: cat.id,
+    meio,
+    tipo: 'gasto',
+    fatura_mes: cartao ? faturaDaCompra(data, fecha, vence) : null,
+    regra_cartao: cartao ? (cat.nome === 'Transporte' ? 'uber' : 'outra') : null,
+  };
+
+  erro.textContent = '';
+  try {
+    await ocupado(formLancar.querySelector('[type=submit]'), 'Lançando...', async () => {
+      const [nova] = await inserir('lancamentos', [linha]);
+      trocar('lancamentos', nova);
+      salvarCache();
+    });
+    folhaLancar.close();
+    render();
+    avisar(`Lançado. Daqui pra frente: ${moeda(porDiaAgora().porDia)} por dia`);
+  } catch (err) {
+    console.warn(err);
+    erro.textContent = ERRO_REDE;
+  }
+});
+
+// ---------- Contas do mês (marcar como pago) ----------
+function abrirItem(id) {
+  const item = estado.dados.itens_mes.find((i) => i.id === id);
+  if (!item) return;
+  estado.itemAberto = item;
+  folhaItem.innerHTML = telas.folhaItem(item, ctx());
+  folhaItem.showModal();
+}
+
+folhaItem.addEventListener('click', async (e) => {
+  if (e.target === folhaItem || e.target.closest('[data-fechar]')) { folhaItem.close(); return; }
+  const alvo = e.target.closest('[data-acao]');
+  if (!alvo) return;
+  const item = estado.itemAberto;
+  try {
+    if (alvo.dataset.acao === 'desmarcar-item') {
+      await ocupado(alvo, 'Desmarcando...', () => desmarcarItem(item));
+      folhaItem.close();
+      render();
+      avisar('Pagamento desmarcado.');
+    } else if (alvo.dataset.acao === 'mudar-valor') {
+      const form = folhaItem.querySelector('#form-item');
+      const valor = lerValor(form.elements.valor.value);
+      if (valor == null || valor < 0) { form.querySelector('.erro').textContent = 'Valor inválido.'; return; }
+      await ocupado(alvo, 'Salvando...', async () => {
+        trocar('itens_mes', await atualizar('itens_mes', item.id, { valor_real: valor }));
+        salvarCache();
+      });
+      folhaItem.close();
+      render();
+      avisar(`Valor atualizado: ${moeda(valor)}`);
+    }
+  } catch (err) {
+    console.warn(err);
+    avisar(ERRO_REDE, 'erro');
+  }
+});
+
+folhaItem.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const item = estado.itemAberto;
+  const valor = lerValor(form.elements.valor.value);
+  if (valor == null || valor < 0) { form.querySelector('.erro').textContent = 'Valor inválido.'; return; }
+  try {
+    await ocupado(form.querySelector('[type=submit]'), 'Salvando...', () => pagarItem(item, form, valor));
+    folhaItem.close();
+    render();
+    avisar(item.tipo === 'deposito' ? 'Guardado.' : 'Pago.');
+  } catch (err) {
+    console.warn(err);
+    form.querySelector('.erro').textContent = ERRO_REDE;
+  }
+});
+
+async function pagarItem(item, form, valor) {
+  const data = form.elements.data.value || hojeSP();
+  const deposito = item.tipo === 'deposito';
+  // Pagar cria um lançamento, pra entrar na conferência com o banco
+  if (valor > 0) {
+    const [l] = await inserir('lancamentos', [{
+      cliente_id: crypto.randomUUID(), data, valor, descricao: item.nome, categoria_id: item.categoria_id,
+      meio: deposito ? null : form.elements.meio.value, tipo: deposito ? 'deposito_caixinha' : 'gasto',
+      item_mes_id: item.id, caixinha_id: item.caixinha_id,
+    }]);
+    trocar('lancamentos', l);
+  }
+  trocar('itens_mes', await atualizar('itens_mes', item.id, { pago: true, pago_em: data, valor_real: valor }));
+  if (item.parcela_id) {
+    trocar('parcelas', await atualizar('parcelas', item.parcela_id, { paga: true, paga_em: data }));
+  }
+  salvarCache();
+}
+
+async function desmarcarItem(item) {
+  await apagarOnde('lancamentos', 'item_mes_id', item.id);
+  estado.dados.lancamentos = estado.dados.lancamentos.filter((l) => l.item_mes_id !== item.id);
+  trocar('itens_mes', await atualizar('itens_mes', item.id, { pago: false, pago_em: null }));
+  if (item.parcela_id) {
+    trocar('parcelas', await atualizar('parcelas', item.parcela_id, { paga: false, paga_em: null }));
+  }
+  salvarCache();
+}
+
+// ---------- Conferir saldo ----------
+async function conferirSaldo(form) {
+  const real = lerValor(form.elements.saldo.value);
+  const erro = form.querySelector('.erro');
+  if (real == null) { erro.textContent = 'Digita o saldo da conta.'; return; }
+  const r = saldoEsperado(estado.dados);
+  const esperado = r ? r.esperado : real;
+  const diff = real - esperado;
+  try {
+    if (diff === 0) {
+      await ocupado(form.querySelector('[type=submit]'), 'Conferindo...', async () => {
+        const [s] = await inserir('saldos_conferidos', [{ data: hojeSP(), saldo: real }]);
+        trocar('saldos_conferidos', s);
+        salvarCache();
+      });
+    }
+    estado.conferencia = { real, esperado, diff };
+    render();
+  } catch (e) {
+    console.warn(e);
+    erro.textContent = ERRO_REDE;
+  }
+}
+
+async function ajustarSaldo(botao) {
+  const c = estado.conferencia;
+  try {
+    await ocupado(botao, 'Ajustando...', async () => {
+      // O ajuste corrige o Livre. O saldo conferido vira o novo ponto de partida.
+      const [a] = await inserir('lancamentos', [{
+        cliente_id: crypto.randomUUID(), data: hojeSP(), valor: c.diff, tipo: 'ajuste',
+        descricao: 'Ajuste da conferência', observacao: `Banco ${moeda(c.real)}, app esperava ${moeda(c.esperado)}`,
+      }]);
+      trocar('lancamentos', a);
+      const [s] = await inserir('saldos_conferidos', [{ data: hojeSP(), saldo: c.real }]);
+      trocar('saldos_conferidos', s);
+      salvarCache();
+    });
+    estado.conferencia = { ...c, ajustado: true };
+    render();
+  } catch (e) {
+    console.warn(e);
+    avisar(ERRO_REDE, 'erro');
+  }
+}
+
+// ---------- Importar dados iniciais ----------
+async function importarArquivo(arquivo) {
+  const erro = $('#erro-importar');
+  erro.textContent = '';
+  let montados;
+  try {
+    montados = montarDados(JSON.parse(await arquivo.text()));
+  } catch (e) {
+    erro.textContent = `Arquivo com problema: ${e.message}`;
+    return;
+  }
+  const resumo = `${montados.lancamentos.length} lançamentos, ${montados.contas_fixas.length} contas fixas, `
+    + `${montados.dividas.length} dívidas e ${montados.itens_mes.length} contas de meses.`;
+  if (!confirm(`Importar ${resumo}`)) return;
+  try {
+    avisar('Importando...');
+    await importarDados(montados);
+    await carregar();
+    location.hash = '#hoje';
+    avisar('Dados importados.');
+  } catch (e) {
+    console.warn(e);
+    erro.textContent = `Não deu pra importar: ${e.message}`;
+  }
+}
+
 // ---------- Login ----------
 function mostrarLogin() {
-  usuario = null;
+  estado.usuario = null;
+  estado.dados = null;
   app.hidden = true;
   telaLogin.hidden = false;
   if (!configurado) {
@@ -150,10 +462,15 @@ function mostrarLogin() {
 }
 
 function mostrarApp(sessao) {
-  usuario = sessao.user;
+  const novoUsuario = estado.usuario?.id !== sessao.user.id;
+  estado.usuario = sessao.user;
   telaLogin.hidden = true;
   app.hidden = false;
-  render();
+  if (novoUsuario) {
+    lerCache();
+    render();
+    carregar();
+  }
 }
 
 $('#form-login').addEventListener('submit', async (e) => {

@@ -1,0 +1,420 @@
+// O que aparece em cada tela. Só monta HTML: quem reage aos toques é o app.js.
+import { moeda, menos, dataBR, dataCurta, nomeMes, mesDe, esc, diaDaSemana, valorParaTexto } from './format.js';
+import * as calc from './calc.js';
+
+export const MEIOS = { pix: 'Pix', debito: 'Débito', cartao: 'Cartão', boleto: 'Boleto', dinheiro: 'Dinheiro' };
+
+const REGRAS_DE_OURO = [
+  'Salário caiu: paga primeiro contas e parcelas. O que sobrar é seu.',
+  'Cartão só pra Uber e assinatura.',
+  'Nada parcelado novo até março/2027.',
+  'Dinheiro que ainda não caiu não existe.',
+  'Viu algo legal? Vai pra lista de compras e espera 2 dias.',
+];
+
+const neg = (v) => (v < 0 ? ' negativo' : '');
+
+function categoriaDe(dados, id) {
+  return dados.categorias.find((c) => c.id === id) ?? null;
+}
+
+function iconeLancamento(dados, l) {
+  if (l.tipo === 'entrada') return '💰';
+  if (l.tipo === 'deposito_caixinha') return '🏦';
+  if (l.tipo === 'resgate_caixinha') return '↩️';
+  if (l.tipo === 'ajuste') return '⚖️';
+  if (l.tipo === 'pagamento_fatura') return '💳';
+  return categoriaDe(dados, l.categoria_id)?.icone ?? '•';
+}
+
+function linhaLancamento(dados, l) {
+  const cat = categoriaDe(dados, l.categoria_id);
+  const titulo = l.descricao || cat?.nome || 'Gasto';
+  const detalhes = [dataCurta(l.data), MEIOS[l.meio], l.regra_cartao === 'uber' ? 'vai pra fatura' : null]
+    .filter(Boolean).join(' · ');
+  const entrada = l.tipo === 'entrada' || l.tipo === 'resgate_caixinha' || (l.tipo === 'ajuste' && l.valor > 0);
+  const valor = l.tipo === 'ajuste' ? Math.abs(l.valor) : l.valor;
+  return `
+    <li class="linha">
+      <span class="icone" aria-hidden="true">${esc(iconeLancamento(dados, l))}</span>
+      <span class="linha-texto"><span class="linha-titulo">${esc(titulo)}</span><span class="mini">${esc(detalhes)}</span></span>
+      <span class="num linha-valor${entrada ? ' positivo' : ''}">${entrada ? '+' : ''}${moeda(valor)}</span>
+    </li>`;
+}
+
+const maisRecentes = (a, b) => b.data.localeCompare(a.data) || (b.created_at ?? '').localeCompare(a.created_at ?? '');
+
+function avisoOffline(ctx) {
+  if (!ctx.offline) return '';
+  const quando = ctx.atualizadoEm ? new Date(ctx.atualizadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+  return `<p class="faixa">Sem internet. Mostrando os dados de ${esc(quando)}.</p>`;
+}
+
+function cartaoImportar() {
+  return `
+    <section class="cartao">
+      <h2>Bora começar</h2>
+      <p class="vazio">Ainda não tem dados aqui. Vai em <a href="#mais">Mais</a> e toca em <b>Importar dados iniciais</b>.</p>
+    </section>`;
+}
+
+function carregando(ctx) {
+  return ctx.dados === null ? '<p class="vazio">Carregando...</p>' : '';
+}
+
+// ---------- Hoje ----------
+
+export function telaHoje(ctx) {
+  const { dados, hoje } = ctx;
+  const topo = `
+    <header class="cabecalho">
+      <h1>Hoje</h1>
+      <p class="sub">${esc(diaDaSemana(hoje))}, ${dataBR(hoje)}</p>
+    </header>${avisoOffline(ctx)}`;
+  if (!dados) return topo + carregando(ctx);
+  if (!dados.config) return topo + cartaoImportar();
+
+  const mes = calc.resumoMes(dados, mesDe(hoje), hoje);
+  const q = calc.quantoPossoGastar(mes.livre, calc.gastosDoDia(dados, hoje), hoje);
+  const fatura = calc.faturaAberta(dados, hoje);
+  const reserva = dados.caixinhas[0];
+  const alertas = calc.alertas(dados, hoje);
+  const ultimos = [...dados.lancamentos].sort(maisRecentes).slice(0, 5);
+
+  let sub;
+  if (q.aindaDaHoje < 0) {
+    sub = `Passou ${moeda(-q.aindaDaHoje)} hoje. Daqui pra frente fica ${moeda(q.porDia)} por dia.`;
+  } else if (q.diasDepoisDeHoje === 0) {
+    sub = 'Último dia do mês.';
+  } else {
+    sub = `Daqui pra frente: ${moeda(q.porDia)} por dia até ${dataCurta(q.ultimoDia)}`;
+  }
+
+  return `${topo}
+    <section class="cartao destaque">
+      <p class="rotulo">Ainda dá hoje</p>
+      <p class="valor-grande num${neg(q.aindaDaHoje)}">${moeda(q.aindaDaHoje)}</p>
+      <p class="linha-sub${neg(q.aindaDaHoje)}">${sub}</p>
+      ${mes.salarioCaiu ? '' : '<p class="nota">O salário deste mês ainda não caiu. Quando cair, confirma na aba <a href="#mes">Mês</a>.</p>'}
+    </section>
+
+    <div class="grade-2">
+      <a class="cartao toque" href="#mes">
+        <p class="rotulo">Livre do mês</p>
+        <p class="valor-medio num${neg(mes.livre)}">${moeda(mes.livre)}</p>
+      </a>
+      <a class="cartao toque" href="#mes">
+        <p class="rotulo">Falta pagar</p>
+        <p class="valor-medio num">${moeda(mes.faltaPagar)}</p>
+        <p class="mini">${mes.proxima
+          ? `${esc(mes.proxima.nome)}${mes.proxima.vencimento ? `, ${dataCurta(mes.proxima.vencimento)}` : ''}`
+          : 'Tudo pago'}</p>
+      </a>
+    </div>
+
+    <section class="cartao">
+      <div class="cartao-topo">
+        <p class="rotulo">Fatura aberta · vence ${dataCurta(fatura.vence)}</p>
+        <p class="valor-medio num">${moeda(fatura.total)}</p>
+      </div>
+      <div class="tres">
+        <div><p class="mini">Uber</p><p class="num">${moeda(fatura.uber)}</p></div>
+        <div><p class="mini">Assinaturas</p><p class="num">${moeda(fatura.assinaturas)}</p></div>
+        <div><p class="mini">Outras</p><p class="num">${moeda(fatura.outras)}</p></div>
+      </div>
+    </section>
+
+    ${reserva ? `
+    <section class="cartao linha-unica">
+      <span>🏦 ${esc(reserva.nome)}</span>
+      <span class="num forte">${moeda(calc.saldoCaixinha(reserva, dados.lancamentos))}</span>
+    </section>` : ''}
+
+    ${alertas.length ? `
+    <section class="cartao">
+      <h2>Atenção</h2>
+      <ul class="lista">${alertas.map((a) => `<li class="alerta">${textoAlerta(a, hoje)}</li>`).join('')}</ul>
+    </section>` : ''}
+
+    <section class="cartao">
+      <h2>Últimos lançamentos</h2>
+      ${ultimos.length
+        ? `<ul class="lista">${ultimos.map((l) => linhaLancamento(dados, l)).join('')}</ul>`
+        : '<p class="vazio">Nada lançado ainda.</p>'}
+    </section>`;
+}
+
+function quando(data, hoje) {
+  if (data === hoje) return 'hoje';
+  if (data === calc.somarDias(hoje, 1)) return 'amanhã';
+  return dataCurta(data);
+}
+
+function textoAlerta(a, hoje) {
+  switch (a.tipo) {
+    case 'atrasada': return `⚠️ <b>${esc(a.item.nome)}</b> venceu ${dataCurta(a.item.vencimento)} e não foi marcada como paga.`;
+    case 'vence': return `📅 <b>${esc(a.item.nome)}</b> vence ${quando(a.item.vencimento, hoje)}.`;
+    case 'limite': return `📊 <b>${esc(a.limite.nome)}</b>: ${a.limite.pct}% do limite.`;
+    case 'cartao': return `💳 ${a.quantas === 1 ? '1 compra' : `${a.quantas} compras`} no cartão fora da regra este mês (${moeda(a.total)}). Cartão é só pra Uber e assinatura.`;
+    default: return '';
+  }
+}
+
+// ---------- Mês ----------
+
+const NOMES_TIPO = {
+  parcela: 'Parcela', avulsa: 'Só este mês', deposito: 'Guardar', fatura_antiga: 'Cartão',
+  fatura_uber: 'Cartão', assinatura: 'Cartão', conta_fixa: '',
+};
+export const pagoComFatura = (item) => ['fatura_antiga', 'fatura_uber', 'assinatura'].includes(item.tipo);
+
+function linhaItem(item, dados, hoje) {
+  const valor = calc.valorItem(item, dados, hoje);
+  const detalhes = [];
+  if (item.pago && item.pago_em) detalhes.push(`pago ${dataCurta(item.pago_em)}`);
+  else if (item.vencimento) detalhes.push(`vence ${dataCurta(item.vencimento)}`);
+  if (NOMES_TIPO[item.tipo]) detalhes.push(NOMES_TIPO[item.tipo]);
+  if (item.tipo === 'fatura_uber' && item.fatura_mes) {
+    detalhes.push(`usado ${moeda(calc.corridasUber(dados.lancamentos, item.fatura_mes))}`);
+  } else if (item.valor_real == null && !item.pago) {
+    detalhes.push('previsto');
+  }
+  const atrasada = !item.pago && item.vencimento && item.vencimento < hoje;
+  return `
+    <li>
+      <button type="button" class="linha botao-linha${item.pago ? ' pago' : ''}" data-acao="abrir-item" data-id="${item.id}">
+        <span class="check${item.pago ? ' marcado' : ''}" aria-label="${item.pago ? 'Pago' : 'Não pago'}"></span>
+        <span class="linha-texto">
+          <span class="linha-titulo">${esc(item.nome)}</span>
+          <span class="mini${atrasada ? ' negativo' : ''}">${esc(detalhes.join(' · '))}</span>
+          ${item.observacao ? `<span class="mini obs">${esc(item.observacao)}</span>` : ''}
+        </span>
+        <span class="num linha-valor">${moeda(valor)}</span>
+      </button>
+    </li>`;
+}
+
+function barra(usado, limite, cor) {
+  const pct = Math.min(100, Math.round(usado * 100 / limite));
+  return `<div class="barra" role="img" aria-label="${pct}%"><span class="${cor}" style="width:${pct}%"></span></div>`;
+}
+
+export function telaMes(ctx) {
+  const { dados, hoje } = ctx;
+  const mes = ctx.mesVisto;
+  const mesAtual = mesDe(hoje);
+  const topo = `
+    <header class="cabecalho cabecalho-nav">
+      <button type="button" class="btn-nav" data-acao="mes-anterior" aria-label="Mês anterior">‹</button>
+      <div><h1>${esc(nomeMes(mes))}</h1>${mes === mesAtual ? '<p class="sub">este mês</p>' : ''}</div>
+      <button type="button" class="btn-nav" data-acao="mes-seguinte" aria-label="Próximo mês">›</button>
+    </header>${avisoOffline(ctx)}`;
+  if (!dados) return topo + carregando(ctx);
+  if (!dados.config) return topo + cartaoImportar();
+
+  const r = calc.resumoMes(dados, mes, hoje);
+  const salario = dados.config.salario;
+  const sobraPrevista = salario - r.plano;
+  const porCategoria = calc.gastosPorCategoria(dados, mes);
+  const categorias = dados.categorias
+    .map((c) => ({ ...c, total: porCategoria.get(c.id) ?? 0 }))
+    .filter((c) => c.total > 0)
+    .sort((a, b) => b.total - a.total);
+  const limites = calc.situacaoLimites(dados, mes);
+  const lancamentos = dados.lancamentos.filter((l) => mesDe(l.data) === mes).sort(maisRecentes);
+
+  return `${topo}
+    <section class="cartao">
+      <dl class="resumo">
+        <div><dt>Entradas</dt><dd class="num">${moeda(r.entradas + r.resgates)}</dd></div>
+        <div><dt>Contas do plano</dt><dd class="num">${menos(r.plano)}</dd></div>
+        <div><dt>Gastos do dia a dia</dt><dd class="num">${menos(r.gastos)}</dd></div>
+        ${r.depositos ? `<div><dt>Guardado fora do plano</dt><dd class="num">${menos(r.depositos)}</dd></div>` : ''}
+        ${r.ajustes ? `<div><dt>Ajustes</dt><dd class="num">${r.ajustes > 0 ? '+' : '-'}${moeda(Math.abs(r.ajustes))}</dd></div>` : ''}
+        <div class="total"><dt>Livre</dt><dd class="num${neg(r.livre)}">${moeda(r.livre)}</dd></div>
+      </dl>
+      ${!r.salarioCaiu ? `
+        <p class="nota">Salário de ${moeda(salario)} ainda não caiu. Sobra prevista: <b class="num">${moeda(sobraPrevista)}</b>.</p>
+        ${mes === mesAtual ? `<button type="button" class="btn-primario largo" data-acao="confirmar-salario">Salário caiu</button>` : ''}` : ''}
+    </section>
+
+    <section class="cartao">
+      <h2>Contas do mês</h2>
+      ${r.itens.length ? `
+        <ul class="lista">${r.itens.map((i) => linhaItem(i, dados, hoje)).join('')}</ul>
+        <p class="rodape num">Total ${moeda(r.plano)} · Falta pagar ${moeda(r.faltaPagar)}</p>`
+        : '<p class="vazio">Nenhuma conta no plano deste mês.</p>'}
+    </section>
+
+    ${limites.length ? `
+    <section class="cartao">
+      <h2>Limites</h2>
+      <ul class="lista limites">${limites.map((l) => `
+        <li>
+          <div class="limite-topo"><span>${esc(l.nome)}</span><span class="num">${moeda(l.usado)} de ${moeda(l.valor)}</span></div>
+          ${barra(l.usado, l.valor, l.cor)}
+        </li>`).join('')}
+      </ul>
+    </section>` : ''}
+
+    <section class="cartao">
+      <h2>Dia a dia por categoria</h2>
+      ${categorias.length ? `<ul class="lista">${categorias.map((c) => `
+        <li class="linha"><span class="icone" aria-hidden="true">${esc(c.icone ?? '')}</span>
+          <span class="linha-texto"><span class="linha-titulo">${esc(c.nome)}</span></span>
+          <span class="num linha-valor">${moeda(c.total)}</span></li>`).join('')}</ul>`
+        : '<p class="vazio">Nenhum gasto do dia a dia ainda.</p>'}
+    </section>
+
+    <details class="cartao">
+      <summary><h2>Lançamentos do mês (${lancamentos.length})</h2></summary>
+      ${lancamentos.length ? `<ul class="lista">${lancamentos.map((l) => linhaLancamento(dados, l)).join('')}</ul>` : '<p class="vazio">Nenhum.</p>'}
+    </details>`;
+}
+
+// Folha que abre ao tocar numa conta do mês
+export function folhaItem(item, ctx) {
+  const { dados, hoje } = ctx;
+  const valor = calc.valorItem(item, dados, hoje);
+  const cat = categoriaDe(dados, item.categoria_id);
+  const fixa = dados.contas_fixas.find((c) => c.id === item.conta_fixa_id);
+  const sub = [item.vencimento ? `vence ${dataBR(item.vencimento)}` : 'sem data', cat?.nome].filter(Boolean).join(' · ');
+  const topo = `
+    <div class="folha-topo"><h2 tabindex="-1" autofocus>${esc(item.nome)}</h2><button type="button" class="btn-fechar" data-fechar aria-label="Fechar">✕</button></div>
+    <p class="sub">${esc(sub)}</p>
+    ${item.observacao ? `<p class="mini obs">${esc(item.observacao)}</p>` : ''}`;
+
+  if (pagoComFatura(item)) {
+    return `${topo}
+      <p class="nota">Essa conta é paga junto com a fatura do cartão. O valor que conta no plano agora é <b class="num">${moeda(valor)}</b>.</p>
+      <p class="vazio">O botão de pagar a fatura chega na Fase 3.</p>`;
+  }
+
+  if (item.pago) {
+    const lanc = dados.lancamentos.find((l) => l.item_mes_id === item.id);
+    return `${topo}
+      <p class="nota">Pago${item.pago_em ? ` em ${dataBR(item.pago_em)}` : ''}: <b class="num">${moeda(valor)}</b>${lanc?.meio ? ` (${MEIOS[lanc.meio]})` : ''}.</p>
+      <button type="button" class="btn-secundario" data-acao="desmarcar-item">Desmarcar pagamento</button>`;
+  }
+
+  const deposito = item.tipo === 'deposito';
+  const meioPadrao = fixa?.meio && fixa.meio !== 'cartao' ? fixa.meio : 'pix';
+  return `${topo}
+    <form id="form-item" class="form">
+      <label class="campo">Valor ${item.valor_real == null ? '(previsto, pode mudar)' : ''}
+        <input name="valor" inputmode="decimal" autocomplete="off" value="${valorParaTexto(valor)}" required>
+      </label>
+      ${deposito ? '' : `
+      <fieldset class="segmentado">
+        <legend>Como pagou</legend>
+        ${['pix', 'debito', 'boleto', 'dinheiro'].map((m) => `
+          <label><input type="radio" name="meio" value="${m}"${m === meioPadrao ? ' checked' : ''}><span>${MEIOS[m]}</span></label>`).join('')}
+      </fieldset>`}
+      <label class="campo">Data <input type="date" name="data" value="${hoje}"></label>
+      <button type="submit" class="btn-primario">${deposito ? 'Guardei' : 'Paguei'}</button>
+      <button type="button" class="btn-secundario" data-acao="mudar-valor">Só atualizar o valor</button>
+      <p class="erro" role="alert"></p>
+    </form>`;
+}
+
+// ---------- Conferir saldo ----------
+
+export function telaConferir(ctx) {
+  const { dados } = ctx;
+  const topo = `
+    <header class="cabecalho">
+      <a href="#mais" class="voltar">‹ Mais</a>
+      <h1>Conferir saldo</h1>
+      <p class="sub">Confere se o app bate com a conta C6.</p>
+    </header>${avisoOffline(ctx)}`;
+  if (!dados) return topo + carregando(ctx);
+  if (!dados.config) return topo + cartaoImportar();
+
+  const r = calc.saldoEsperado(dados);
+  const c = ctx.conferencia;
+  let resultado = '';
+  if (c) {
+    if (c.diff === 0) {
+      resultado = '<section class="cartao resultado ok"><p class="valor-medio">✅ Bateu certinho</p><p class="mini">Saldo conferido e salvo.</p></section>';
+    } else if (c.ajustado) {
+      resultado = `<section class="cartao resultado ok"><p class="valor-medio">Ajustado</p><p class="mini">Criei um ajuste de ${c.diff > 0 ? '+' : '-'}${moeda(Math.abs(c.diff))} e salvei o saldo de ${moeda(c.real)}.</p></section>`;
+    } else {
+      resultado = `
+        <section class="cartao resultado alerta-cartao">
+          <p class="rotulo">Diferença</p>
+          <p class="valor-medio num">${moeda(Math.abs(c.diff))}</p>
+          <p>O banco tem ${c.diff > 0 ? 'mais' : 'menos'} do que o app esperava (${moeda(c.esperado)}).</p>
+          <p><b>Falta lançar algo?</b> Se lembrou, lança e confere de novo. Se não, ajusta.</p>
+          <button type="button" class="btn-primario largo" data-acao="ajustar">Ajustar ${c.diff > 0 ? '+' : '-'}${moeda(Math.abs(c.diff))}</button>
+          <button type="button" class="btn-secundario" data-acao="cancelar-conferencia">Vou lançar o que falta</button>
+        </section>`;
+    }
+  }
+
+  return `${topo}
+    ${r ? `
+    <section class="cartao">
+      <dl class="resumo">
+        <div><dt>Último conferido (${dataCurta(r.base.data)})</dt><dd class="num">${moeda(r.base.saldo)}</dd></div>
+        <div><dt>Entrou na conta</dt><dd class="num">+${moeda(calc.soma(r.movimentos.filter((m) => calc.efeitoNaConta(m) > 0), calc.efeitoNaConta))}</dd></div>
+        <div><dt>Saiu da conta</dt><dd class="num">${menos(-calc.soma(r.movimentos.filter((m) => calc.efeitoNaConta(m) < 0), calc.efeitoNaConta))}</dd></div>
+        <div class="total"><dt>Esperado agora</dt><dd class="num">${moeda(r.esperado)}</dd></div>
+      </dl>
+      <p class="mini">Compras no cartão e em dinheiro vivo não contam aqui. O cartão só sai da conta quando a fatura é paga.</p>
+    </section>` : '<section class="cartao"><p class="vazio">Ainda não tem saldo conferido. O primeiro que você digitar vira o ponto de partida.</p></section>'}
+
+    <form id="form-conferir" class="cartao form">
+      <label class="campo">Quanto tem na conta C6 agora?
+        <input name="saldo" inputmode="decimal" autocomplete="off" placeholder="0,00" required>
+      </label>
+      <button type="submit" class="btn-primario">Conferir</button>
+      <p class="erro" role="alert"></p>
+    </form>
+    ${resultado}`;
+}
+
+// ---------- Dívidas e Comprar (próximas fases) ----------
+
+export function telaDividas(ctx) {
+  return `
+    <header class="cabecalho"><h1>Dívidas</h1></header>${avisoOffline(ctx)}
+    <section class="cartao"><p class="vazio">Progresso, próximas parcelas e quando o dinheiro libera chegam na Fase 3.</p></section>`;
+}
+
+export function telaComprar(ctx) {
+  return `
+    <header class="cabecalho"><h1>Comprar</h1><p class="sub">Coisas que você quer, esperando a hora certa.</p></header>${avisoOffline(ctx)}
+    <section class="cartao"><p class="vazio">A lista com links da Amazon, Mercado Livre e Shopee chega na Fase 4.</p></section>`;
+}
+
+// ---------- Mais ----------
+
+export function telaMais(ctx) {
+  const { dados } = ctx;
+  const importar = dados && !dados.config ? `
+    <section class="cartao">
+      <h2>Importar dados iniciais</h2>
+      <p class="vazio">Escolhe o arquivo <b>dados-iniciais.json</b>. Faz isso uma vez só. Os dados vão direto pro seu Supabase.</p>
+      <label class="btn-primario largo arquivo">Escolher arquivo
+        <input type="file" id="arquivo-importar" accept=".json,application/json">
+      </label>
+      <p class="erro" id="erro-importar" role="alert"></p>
+    </section>` : '';
+
+  return `
+    <header class="cabecalho">
+      <h1>Mais</h1>
+      <p class="sub">${esc(ctx.usuario?.email ?? '')}</p>
+    </header>${avisoOffline(ctx)}
+    ${importar}
+    <nav class="cartao menu">
+      <a href="#conferir"><span>🏦 Conferir saldo</span><span aria-hidden="true">›</span></a>
+    </nav>
+    <section class="cartao">
+      <h2>Regras de ouro</h2>
+      <ol class="regras">${REGRAS_DE_OURO.map((r) => `<li>${r}</li>`).join('')}</ol>
+    </section>
+    <section class="cartao">
+      <button type="button" class="btn-secundario" data-acao="sair">Sair</button>
+    </section>`;
+}

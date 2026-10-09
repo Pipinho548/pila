@@ -18,6 +18,14 @@ Testes:
 node --test
 ```
 
+`tests/` tem os testes das regras com números inventados. Se existir a pasta `privado/` (só no seu PC),
+o mesmo comando roda também os testes de aceitação com os dados reais.
+
+## Dados iniciais
+
+O arquivo `privado/dados-iniciais.json` tem os dados reais e nunca vai pro GitHub.
+Pra importar: abra o app logado, vá em **Mais > Importar dados iniciais** e escolha esse arquivo. Só funciona com a conta vazia.
+
 ## Conectar o Supabase
 
 Preencha `js/config.js` com a **Project URL** e a chave **anon / publishable** do seu projeto
