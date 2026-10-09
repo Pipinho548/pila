@@ -439,3 +439,38 @@ details[open].cartao summary { margin-bottom: 8px; }
   cursor: pointer;
   width: 100%;
 }
+
+/* ---------- Fase 3 ---------- */
+.btn-mini {
+  font-size: 14px; font-weight: 600; white-space: nowrap;
+  color: var(--primaria-texto); background: var(--primaria);
+  padding: 8px 12px; border-radius: 999px;
+}
+.link-botao { display: block; text-align: center; text-decoration: none; }
+.btn-secundario.link-botao { margin-top: 12px; color: var(--texto); }
+.botoes-lado { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+.sub-titulo { font-size: 15px; margin: 16px 0 8px; }
+.secao { margin: 20px 4px 10px; font-size: 15px; color: var(--texto-2); font-weight: 600; }
+
+.selo {
+  font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 999px;
+  background: var(--primaria-suave); color: var(--texto); white-space: nowrap;
+}
+.selo.a_pagar { background: color-mix(in srgb, var(--laranja) 18%, transparent); }
+.selo.quitada { background: color-mix(in srgb, var(--verde) 22%, transparent); }
+.divida h2 { margin: 0; }
+.divida .barra { margin-top: 12px; }
+.divida .resumo { margin-top: 10px; }
+.divida details { margin-top: 10px; }
+.divida details summary { cursor: pointer; }
+.barra.grossa { height: 12px; border-radius: 6px; }
+.barra.grossa span { border-radius: 6px; }
+
+.passos { margin-top: 10px; }
+.passos .botao-linha { grid-template-columns: auto 1fr; }
+
+.projecao { grid-template-columns: 96px 1fr auto !important; }
+.projecao .barra { align-self: center; }
+.check.vazio-check { border-style: dashed; }
+
+.cartao > details summary { cursor: pointer; margin-top: 12px; }

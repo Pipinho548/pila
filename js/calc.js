@@ -36,6 +36,13 @@ export function somarDias(data, n) {
 
 const diaDe = (data) => Number(data.slice(8, 10));
 
+const utc = (data) => { const [a, m, d] = data.split('-').map(Number); return Date.UTC(a, m - 1, d); };
+
+// Dias de uma data até outra: diasEntre('2026-10-09', '2026-10-12') = 3
+export function diasEntre(de, ate) {
+  return Math.round((utc(ate) - utc(de)) / 86400000);
+}
+
 // ---------- Cartão ----------
 
 // Em qual fatura (mês do vencimento) cai uma compra no cartão.
@@ -79,17 +86,63 @@ export function reservadoFatura(lancamentos) {
     && !faturaPaga(lancamentos, l.fatura_mes)));
 }
 
+const TIPOS_DA_FATURA = ['fatura_antiga', 'fatura_uber', 'assinatura'];
+
+// Tudo de uma fatura (mês de vencimento): compras, de onde sai o dinheiro e se já foi paga.
+export function detalheFatura(dados, faturaMes, hoje) {
+  const { cartao_fecha_dia: fecha, cartao_vence_dia: vence } = dados.config;
+  const compras = dados.lancamentos
+    .filter((l) => l.meio === 'cartao' && l.tipo === 'gasto' && l.fatura_mes === faturaMes)
+    .sort((a, b) => a.data.localeCompare(b.data));
+  const novas = compras.filter((l) => !l.antes_do_app);
+  // Assinaturas (Claude, Google) cobram sozinhas: entram pela conta do plano, não por lançamento
+  const itensAssinatura = dados.itens_mes.filter((i) => i.tipo === 'assinatura' && i.fatura_mes === faturaMes);
+  const valorAssinaturas = soma(itensAssinatura, (i) => i.valor_real ?? i.valor_previsto);
+
+  const porRegra = resumoCartao(compras);
+  porRegra.assinaturas += valorAssinaturas;
+  porRegra.total += valorAssinaturas;
+
+  // De onde sai: o que já está no plano do mês e o que está "Reservado pra fatura"
+  const antigas = soma(compras.filter((l) => l.antes_do_app));
+  const uber = soma(novas.filter((l) => l.regra_cartao === 'uber'));
+  const assinaturas = soma(novas.filter((l) => l.regra_cartao === 'assinatura')) + valorAssinaturas;
+  const reservado = soma(novas.filter((l) => l.regra_cartao === 'outra'));
+  const dataFecha = fechamentoDaFatura(faturaMes, fecha, vence);
+
+  return {
+    mes: faturaMes,
+    fecha: dataFecha,
+    vence: vencimentoDaFatura(faturaMes, vence),
+    fechada: hoje > dataFecha,
+    compras,
+    itensAssinatura,
+    ...porRegra,
+    origem: { antigas, uber, assinaturas, reservado },
+    pagamento: dados.lancamentos.find((l) => l.tipo === 'pagamento_fatura' && l.fatura_mes === faturaMes) ?? null,
+  };
+}
+
 // Fatura que está recebendo as compras de hoje.
 export function faturaAberta(dados, hoje) {
   const { cartao_fecha_dia: fecha, cartao_vence_dia: vence } = dados.config;
-  const mes = faturaDaCompra(hoje, fecha, vence);
-  const compras = dados.lancamentos.filter((l) => l.meio === 'cartao' && l.fatura_mes === mes);
-  return {
-    mes,
-    fecha: fechamentoDaFatura(mes, fecha, vence),
-    vence: vencimentoDaFatura(mes, vence),
-    ...resumoCartao(compras),
-  };
+  return detalheFatura(dados, faturaDaCompra(hoje, fecha, vence), hoje);
+}
+
+// Faturas que já fecharam e ainda não foram pagas.
+export function faturasParaPagar(dados, hoje) {
+  const aberta = faturaAberta(dados, hoje).mes;
+  const meses = new Set();
+  for (const l of dados.lancamentos) if (l.meio === 'cartao' && l.fatura_mes && l.fatura_mes < aberta) meses.add(l.fatura_mes);
+  for (const i of dados.itens_mes) if (TIPOS_DA_FATURA.includes(i.tipo) && i.fatura_mes && i.fatura_mes < aberta) meses.add(i.fatura_mes);
+  return [...meses].sort()
+    .map((mes) => detalheFatura(dados, mes, hoje))
+    .filter((f) => !f.pagamento && f.total > 0);
+}
+
+// Contas do plano que são pagas junto com a fatura
+export function itensDaFatura(dados, faturaMes) {
+  return dados.itens_mes.filter((i) => TIPOS_DA_FATURA.includes(i.tipo) && i.fatura_mes === faturaMes);
 }
 
 // ---------- Plano do mês e Livre ----------
@@ -256,6 +309,98 @@ export function saldoEsperado(dados) {
   return { base, movimentos, esperado: base.saldo + soma(movimentos, efeitoNaConta) };
 }
 
+// ---------- Dívidas ----------
+
+export function resumoDivida(divida, parcelas) {
+  const minhas = parcelas.filter((p) => p.divida_id === divida.id).sort((a, b) => a.numero - b.numero);
+  const pendentes = minhas.filter((p) => !p.paga);
+  const pagas = divida.pagas_antes + minhas.filter((p) => p.paga).length;
+  let falta;
+  if (divida.status === 'quitada') falta = 0;
+  else if (pendentes.length) falta = soma(pendentes);
+  else falta = divida.valor_negociado ?? divida.valor_original ?? 0;
+  return {
+    pagas,
+    total: divida.total_parcelas,
+    falta,
+    pendentes,
+    proxima: pendentes[0] ?? null,
+    ultima: pendentes.at(-1) ?? null,
+  };
+}
+
+export function totalDevo(dados) {
+  let parcelado = 0;
+  let semData = 0;
+  for (const d of dados.dividas) {
+    if (d.status === 'quitada') continue;
+    const r = resumoDivida(d, dados.parcelas);
+    if (r.pendentes.length) parcelado += r.falta; else semData += r.falta;
+  }
+  return { parcelado, semData, total: parcelado + semData };
+}
+
+// Quando o dinheiro libera: no mês seguinte à última parcela, a parcela vira sobra.
+export function linhaDoTempo(dados) {
+  const porMes = new Map();
+  for (const d of dados.dividas) {
+    if (d.status === 'quitada') continue;
+    const { ultima } = resumoDivida(d, dados.parcelas);
+    if (!ultima) continue;
+    const mes = somarMeses(mesDe(ultima.vencimento), 1);
+    const passo = porMes.get(mes) ?? { mes, valor: 0, dividas: [] };
+    passo.valor += ultima.valor;
+    passo.dividas.push(d.nome);
+    porMes.set(mes, passo);
+  }
+  let acumulado = 0;
+  return [...porMes.values()]
+    .sort((a, b) => a.mes.localeCompare(b.mes))
+    .map((p) => ({ ...p, acumulado: (acumulado += p.valor) }));
+}
+
+// ---------- Projeção ----------
+
+// Plano de um mês: o de verdade, se já existe; senão, montado com as contas fixas ativas
+// e as parcelas que vencem no mês.
+export function planoDoMes(dados, mes) {
+  const reais = dados.itens_mes.filter((i) => i.mes === mes);
+  if (reais.length) return { itens: reais, projetado: false };
+
+  const itens = [];
+  for (const c of dados.contas_fixas) {
+    if (!c.ativa) continue;
+    const doCartao = c.tipo === 'assinatura' || c.tipo === 'fatura_uber';
+    itens.push({
+      id: `projetado-${c.id}`, mes, nome: c.nome, tipo: c.tipo === 'conta' ? 'conta_fixa' : c.tipo,
+      valor_previsto: c.valor_previsto, valor_real: null,
+      vencimento: c.dia ? dataNoMes(mes, c.dia) : null, categoria_id: c.categoria_id,
+      fatura_mes: doCartao ? mes : null, pago: false, ordem: c.ordem ?? 0, projetado: true,
+    });
+  }
+  for (const p of dados.parcelas) {
+    if (p.paga || mesDe(p.vencimento) !== mes) continue;
+    const d = dados.dividas.find((x) => x.id === p.divida_id);
+    if (!d || d.status === 'quitada') continue;
+    itens.push({
+      id: `projetado-${p.id}`, mes, nome: d.total_parcelas ? `${d.nome} ${p.numero}/${d.total_parcelas}` : d.nome,
+      tipo: 'parcela', valor_previsto: p.valor, valor_real: null, vencimento: p.vencimento,
+      pago: false, ordem: 0, projetado: true,
+    });
+  }
+  itens.sort(porVencimento);
+  return { itens, projetado: true };
+}
+
+export function projecao(dados, mesInicial, meses, hoje) {
+  return Array.from({ length: meses }, (_, i) => {
+    const mes = somarMeses(mesInicial, i);
+    const { itens, projetado } = planoDoMes(dados, mes);
+    const total = soma(itens, (item) => valorItem(item, dados, hoje));
+    return { mes, total, sobra: dados.config.salario - total, projetado };
+  });
+}
+
 // ---------- Alertas da tela Hoje ----------
 
 export function alertas(dados, hoje) {
@@ -272,5 +417,13 @@ export function alertas(dados, hoje) {
   const foraDaRegra = dados.lancamentos.filter((l) =>
     l.regra_cartao === 'outra' && !l.antes_do_app && mesDe(l.data) === mesDe(hoje));
   if (foraDaRegra.length) lista.push({ tipo: 'cartao', total: soma(foraDaRegra), quantas: foraDaRegra.length });
+  for (const f of faturasParaPagar(dados, hoje)) {
+    if (f.vence <= somarDias(hoje, 3)) lista.push({ tipo: 'fatura', fatura: f });
+  }
+  for (const d of dados.dividas) {
+    if (d.status !== 'quitada' && d.prazo && d.prazo >= hoje && d.prazo <= somarDias(hoje, 30)) {
+      lista.push({ tipo: 'prazo', divida: d });
+    }
+  }
   return lista;
 }

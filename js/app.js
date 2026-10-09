@@ -6,7 +6,7 @@ import {
 import { hoje as hojeSP, mesDe, lerValor, moeda, dataCurta, esc } from './format.js';
 import {
   faturaDaCompra, vencimentoDaFatura, resumoMes, gastosDoDia, quantoPossoGastar,
-  saldoEsperado, somarMeses,
+  saldoEsperado, somarMeses, detalheFatura, itensDaFatura, resumoDivida,
 } from './calc.js';
 import { montarDados } from './importar.js';
 import * as telas from './telas.js';
@@ -20,6 +20,7 @@ const folhaLancar = $('#folha-lancar');
 const formLancar = $('#form-lancar');
 const folhaItem = $('#folha-item');
 const folhaEditar = $('#folha-editar');
+const folhaGeral = $('#folha-geral');
 
 const estado = {
   usuario: null,
@@ -87,8 +88,10 @@ const ROTAS = {
   comprar: telas.telaComprar,
   mais: telas.telaMais,
   conferir: telas.telaConferir,
+  fatura: telas.telaFatura,
+  caixinhas: telas.telaCaixinhas,
 };
-const ABA_DA_ROTA = { conferir: 'mais' };
+const ABA_DA_ROTA = { conferir: 'mais', fatura: 'hoje', caixinhas: 'hoje' };
 
 function rotaAtual() {
   const rota = location.hash.slice(1);
@@ -155,6 +158,17 @@ conteudo.addEventListener('click', async (e) => {
     abrirItem(alvo.dataset.id);
   } else if (acao === 'abrir-lancamento') {
     abrirLancamento(alvo.dataset.id);
+  } else if (acao === 'ir-mes') {
+    estado.mesVisto = alvo.dataset.mes;
+    render();
+    window.scrollTo(0, 0);
+  } else if (acao === 'abrir-pagar-fatura') {
+    abrirFolha(telas.folhaPagarFatura(detalheFatura(estado.dados, alvo.dataset.mes, hojeSP()), ctx()));
+  } else if (acao === 'abrir-caixinha') {
+    const caixinha = estado.dados.caixinhas.find((c) => c.id === alvo.dataset.id);
+    abrirFolha(telas.folhaCaixinha(caixinha, alvo.dataset.tipo, ctx()));
+  } else if (acao === 'passo') {
+    await marcarPasso(alvo);
   } else if (acao === 'confirmar-salario') {
     await confirmarSalario(alvo);
   } else if (acao === 'ajustar') {
@@ -342,10 +356,11 @@ folhaItem.addEventListener('submit', async (e) => {
   const valor = lerValor(form.elements.valor.value);
   if (valor == null || valor < 0) { form.querySelector('.erro').textContent = 'Valor inválido.'; return; }
   try {
-    await ocupado(form.querySelector('[type=submit]'), 'Salvando...', () => pagarItem(item, form, valor));
+    const quitou = await ocupado(form.querySelector('[type=submit]'), 'Salvando...', () => pagarItem(item, form, valor));
     folhaItem.close();
     render();
-    avisar(item.tipo === 'deposito' ? 'Guardado.' : 'Pago.');
+    if (quitou) avisar(`🎉 Acabou! ${quitou} quitado. Esse dinheiro agora sobra todo mês.`);
+    else avisar(item.tipo === 'deposito' ? 'Guardado.' : 'Pago.');
   } catch (err) {
     console.warn(err);
     form.querySelector('.erro').textContent = ERRO_REDE;
@@ -365,10 +380,24 @@ async function pagarItem(item, form, valor) {
     trocar('lancamentos', l);
   }
   trocar('itens_mes', await atualizar('itens_mes', item.id, { pago: true, pago_em: data, valor_real: valor }));
+  let quitou = null;
   if (item.parcela_id) {
-    trocar('parcelas', await atualizar('parcelas', item.parcela_id, { paga: true, paga_em: data }));
+    const parcela = await atualizar('parcelas', item.parcela_id, { paga: true, paga_em: data });
+    trocar('parcelas', parcela);
+    quitou = await verificarQuitacao(parcela.divida_id, data);
   }
   salvarCache();
+  return quitou;
+}
+
+// Pagou a última parcela: a dívida vira "quitada". Devolve o nome pra comemorar.
+async function verificarQuitacao(dividaId, data) {
+  const divida = estado.dados.dividas.find((d) => d.id === dividaId);
+  if (!divida || divida.status === 'quitada') return null;
+  const r = resumoDivida(divida, estado.dados.parcelas);
+  if (r.pendentes.length || (divida.total_parcelas && r.pagas < divida.total_parcelas)) return null;
+  trocar('dividas', await atualizar('dividas', divida.id, { status: 'quitada', quitada_em: data }));
+  return divida.nome;
 }
 
 async function desmarcarItem(item) {
@@ -376,9 +405,113 @@ async function desmarcarItem(item) {
   estado.dados.lancamentos = estado.dados.lancamentos.filter((l) => l.item_mes_id !== item.id);
   trocar('itens_mes', await atualizar('itens_mes', item.id, { pago: false, pago_em: null }));
   if (item.parcela_id) {
-    trocar('parcelas', await atualizar('parcelas', item.parcela_id, { paga: false, paga_em: null }));
+    const parcela = await atualizar('parcelas', item.parcela_id, { paga: false, paga_em: null });
+    trocar('parcelas', parcela);
+    // Se tinha quitado por causa dessa parcela, volta a ser ativa
+    const divida = estado.dados.dividas.find((d) => d.id === parcela.divida_id);
+    if (divida?.status === 'quitada') {
+      trocar('dividas', await atualizar('dividas', divida.id, { status: 'ativa', quitada_em: null }));
+    }
   }
   salvarCache();
+}
+
+// ---------- Folha geral: pagar fatura, guardar e resgatar ----------
+function abrirFolha(html) {
+  folhaGeral.innerHTML = html;
+  folhaGeral.showModal();
+}
+
+folhaGeral.addEventListener('click', (e) => {
+  if (e.target === folhaGeral || e.target.closest('[data-fechar]')) folhaGeral.close();
+});
+
+folhaGeral.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const erro = form.querySelector('.erro');
+  const valor = lerValor(form.elements.valor.value);
+  if (!valor || valor <= 0) { erro.textContent = 'Valor inválido.'; return; }
+  try {
+    let mensagem;
+    await ocupado(form.querySelector('[type=submit]'), 'Salvando...', async () => {
+      if (form.id === 'form-fatura') mensagem = await pagarFatura(form.dataset.mes, valor, form.elements.data.value || hojeSP());
+      else if (form.id === 'form-caixinha') mensagem = await movimentarCaixinha(form, valor);
+    });
+    folhaGeral.close();
+    render();
+    avisar(mensagem);
+  } catch (err) {
+    console.warn(err);
+    erro.textContent = ERRO_REDE;
+  }
+});
+
+// Pagar a fatura não é gasto novo: sai da conta, mas o Livre já contou cada parte
+// (Uber, assinaturas e compras antigas pelo plano; o resto pelo "Reservado pra fatura").
+async function pagarFatura(faturaMes, valor, data) {
+  const f = detalheFatura(estado.dados, faturaMes, hojeSP());
+  const quando = dataCurta(f.vence);
+  const novos = [{
+    cliente_id: crypto.randomUUID(), data, valor, tipo: 'pagamento_fatura', fatura_mes: faturaMes,
+    descricao: `Fatura C6 de ${quando}`,
+  }];
+  const diferenca = f.total - valor; // banco cobrou mais: diferença negativa, o Livre cai
+  if (diferenca !== 0) {
+    novos.push({
+      cliente_id: crypto.randomUUID(), data, valor: diferenca, tipo: 'ajuste', fatura_mes: faturaMes,
+      descricao: `Diferença da fatura de ${quando}`,
+      observacao: `Banco cobrou ${moeda(valor)}, o app esperava ${moeda(f.total)}`,
+    });
+  }
+  for (const l of await inserir('lancamentos', novos)) trocar('lancamentos', l);
+
+  // As contas do plano que eram dessa fatura ficam pagas, com o valor de verdade
+  for (const item of itensDaFatura(estado.dados, faturaMes)) {
+    const real = item.tipo === 'fatura_uber' ? f.origem.uber : (item.valor_real ?? item.valor_previsto);
+    trocar('itens_mes', await atualizar('itens_mes', item.id, { pago: true, pago_em: data, valor_real: real }));
+  }
+  salvarCache();
+  return diferenca === 0
+    ? `Fatura de ${quando} paga.`
+    : `Fatura paga. A diferença de ${moeda(Math.abs(diferenca))} entrou como ajuste.`;
+}
+
+// Apagar o pagamento da fatura: some o pagamento, o ajuste da diferença e as contas voltam a "não paga"
+async function desfazerPagamentoFatura(faturaMes) {
+  const daFatura = estado.dados.lancamentos.filter((l) =>
+    l.fatura_mes === faturaMes && (l.tipo === 'pagamento_fatura' || l.tipo === 'ajuste'));
+  for (const l of daFatura) await apagar('lancamentos', l.id);
+  estado.dados.lancamentos = estado.dados.lancamentos.filter((l) => !daFatura.includes(l));
+  for (const item of itensDaFatura(estado.dados, faturaMes)) {
+    const campos = { pago: false, pago_em: null };
+    if (item.tipo === 'fatura_uber') campos.valor_real = null; // volta a valer o previsto até fechar
+    trocar('itens_mes', await atualizar('itens_mes', item.id, campos));
+  }
+}
+
+async function movimentarCaixinha(form, valor) {
+  const tipo = form.dataset.tipo;
+  const [l] = await inserir('lancamentos', [{
+    cliente_id: crypto.randomUUID(), data: form.elements.data.value || hojeSP(), valor, tipo,
+    caixinha_id: form.dataset.id,
+    descricao: form.elements.descricao.value.trim() || (tipo === 'deposito_caixinha' ? 'Guardar no CDB' : 'Resgate do CDB'),
+  }]);
+  trocar('lancamentos', l);
+  salvarCache();
+  return `${tipo === 'deposito_caixinha' ? 'Guardado' : 'Resgatado'}. Daqui pra frente: ${moeda(porDiaAgora().porDia)} por dia`;
+}
+
+async function marcarPasso(botao) {
+  const passo = estado.dados.passos_divida.find((p) => p.id === botao.dataset.id);
+  try {
+    trocar('passos_divida', await atualizar('passos_divida', passo.id, { feito: !passo.feito }));
+    salvarCache();
+    render();
+  } catch (err) {
+    console.warn(err);
+    avisar(ERRO_REDE, 'erro');
+  }
 }
 
 // ---------- Editar ou apagar lançamento ----------
@@ -398,7 +531,8 @@ folhaEditar.addEventListener('click', async (e) => {
   if (!confirm(`Apagar "${l.descricao || 'lançamento'}" de ${moeda(Math.abs(l.valor))}?`)) return;
   try {
     await ocupado(alvo, 'Apagando...', async () => {
-      await apagar('lancamentos', l.id);
+      if (l.tipo === 'pagamento_fatura') await desfazerPagamentoFatura(l.fatura_mes);
+      else await apagar('lancamentos', l.id);
       estado.dados.lancamentos = estado.dados.lancamentos.filter((x) => x.id !== l.id);
       salvarCache();
     });

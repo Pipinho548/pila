@@ -5,6 +5,7 @@ import {
   diasNoMes, somarMeses, dataNoMes, somarDias, faturaDaCompra, fechamentoDaFatura,
   resumoCartao, reservadoFatura, corridasUber, valorItem, resumoMes, quantoPossoGastar,
   gastosDoDia, situacaoLimites, saldoCaixinha, efeitoNaConta, saldoEsperado, corDoLimite,
+  detalheFatura, faturasParaPagar, totalDevo, linhaDoTempo, planoDoMes, projecao,
 } from '../js/calc.js';
 
 const base = () => ({
@@ -173,4 +174,61 @@ test('conferir saldo: cartão e dinheiro vivo não mexem na conta', () => {
     lanc({ data: '2026-11-11', tipo: 'entrada', valor: 10000 }),
   );
   assert.equal(saldoEsperado(d).esperado, 50000 - 2000 + 10000);
+});
+
+test('fatura: separa o que está no plano do que está reservado; some quando é paga', () => {
+  const d = base();
+  d.itens_mes.push({ id: 'a1', mes: '2026-12', tipo: 'assinatura', valor_previsto: 5000, valor_real: null, fatura_mes: '2026-12' });
+  d.lancamentos.push(
+    lanc({ data: '2026-11-04', valor: 1000, meio: 'cartao', regra_cartao: 'uber', fatura_mes: '2026-12' }),
+    lanc({ data: '2026-11-20', valor: 3000, meio: 'cartao', regra_cartao: 'outra', fatura_mes: '2026-12' }),
+    lanc({ data: '2026-11-02', valor: 700, meio: 'cartao', regra_cartao: 'outra', fatura_mes: '2026-11', antes_do_app: true }),
+  );
+  const f = detalheFatura(d, '2026-12', '2026-12-04');
+  assert.equal(f.total, 9000);
+  assert.deepEqual(f.origem, { antigas: 0, uber: 1000, assinaturas: 5000, reservado: 3000 });
+  assert.equal(f.vence, '2026-12-10');
+  assert.equal(f.fechada, true);
+  assert.equal(detalheFatura(d, '2026-12', '2026-12-03').fechada, false);
+  assert.deepEqual(faturasParaPagar(d, '2026-12-04').map((x) => x.mes), ['2026-11', '2026-12']);
+  d.lancamentos.push(lanc({ tipo: 'pagamento_fatura', valor: 9000, fatura_mes: '2026-12', meio: null }));
+  assert.deepEqual(faturasParaPagar(d, '2026-12-04').map((x) => x.mes), ['2026-11']);
+});
+
+test('dívidas: quanto falta, linha do tempo e total', () => {
+  const d = base();
+  d.dividas = [
+    { id: 'd1', nome: 'Moto', status: 'ativa', pagas_antes: 2, total_parcelas: 5 },
+    { id: 'd2', nome: 'Celular', status: 'ativa', pagas_antes: 0, total_parcelas: 2 },
+    { id: 'd3', nome: 'Imposto', status: 'a_pagar', pagas_antes: 0, valor_original: 10000, valor_negociado: 6000 },
+    { id: 'd4', nome: 'Antiga', status: 'quitada', pagas_antes: 0, valor_original: 999 },
+  ];
+  d.parcelas = [
+    { id: 'p1', divida_id: 'd1', numero: 3, valor: 1000, vencimento: '2026-11-05', paga: true },
+    { id: 'p2', divida_id: 'd1', numero: 4, valor: 1000, vencimento: '2026-12-05', paga: false },
+    { id: 'p3', divida_id: 'd1', numero: 5, valor: 1000, vencimento: '2027-01-05', paga: false },
+    { id: 'p4', divida_id: 'd2', numero: 1, valor: 500, vencimento: '2026-12-10', paga: false },
+    { id: 'p5', divida_id: 'd2', numero: 2, valor: 500, vencimento: '2027-01-10', paga: false },
+  ];
+  assert.deepEqual(totalDevo(d), { parcelado: 3000, semData: 6000, total: 9000 });
+  const t = linhaDoTempo(d);
+  assert.equal(t.length, 1);
+  assert.equal(t[0].mes, '2027-02');
+  assert.equal(t[0].valor, 1500);
+});
+
+test('projeção: usa o plano de verdade se existe; senão monta com contas fixas ativas e parcelas', () => {
+  const d = base();
+  d.dividas = [{ id: 'd1', nome: 'Moto', status: 'ativa', pagas_antes: 0, total_parcelas: 2 }];
+  d.parcelas = [{ id: 'p1', divida_id: 'd1', numero: 2, valor: 20000, vencimento: '2027-01-05', paga: false }];
+  d.contas_fixas = [
+    { id: 'c1', nome: 'Aluguel', tipo: 'conta', valor_previsto: 100000, dia: 31, ativa: true },
+    { id: 'c2', nome: 'Velha', tipo: 'conta', valor_previsto: 5000, ativa: false },
+    { id: 'c3', nome: 'Uber', tipo: 'fatura_uber', valor_previsto: 30000, ativa: true },
+  ];
+  d.itens_mes.push({ id: 'i1', mes: '2026-12', nome: 'Real', tipo: 'avulsa', valor_previsto: 7000, valor_real: null });
+  const [dez, jan] = projecao(d, '2026-12', 2, '2026-11-10');
+  assert.deepEqual([dez.total, dez.projetado], [7000, false]);
+  assert.deepEqual([jan.total, jan.sobra, jan.projetado], [150000, 150000, true]);
+  assert.equal(planoDoMes(d, '2027-02').itens.find((i) => i.nome === 'Aluguel').vencimento, '2027-02-28');
 });
