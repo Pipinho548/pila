@@ -162,7 +162,7 @@ $('#form-login').addEventListener('submit', async (e) => {
     await entrar(form.email.value.trim(), form.senha.value);
     form.reset();
   } catch (err) {
-    erro.textContent = err?.message === 'Invalid login credentials'
+    erro.textContent = (err?.code === 'invalid_credentials' || err?.message === 'Invalid login credentials')
       ? 'E-mail ou senha errados.'
       : 'Não deu pra entrar. Confere a internet e tenta de novo.';
   } finally {
