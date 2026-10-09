@@ -118,7 +118,8 @@
   }
 }
 
-* { box-sizing: border-box; }
+/* Sem zoom de dois toques: o toque responde na hora, como num app */
+* { box-sizing: border-box; touch-action: manipulation; }
 html { -webkit-text-size-adjust: 100%; background: var(--papel); }
 
 body {

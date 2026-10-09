@@ -196,6 +196,12 @@ window.addEventListener('hashchange', () => {
   window.scrollTo(0, 0);
 });
 
+// ---------- Sem zoom ----------
+// O iPhone ignora o "user-scalable=no" em alguns casos: bloqueia o zoom de pinça aqui também.
+for (const evento of ['gesturestart', 'gesturechange']) {
+  document.addEventListener(evento, (e) => e.preventDefault(), { passive: false });
+}
+
 // ---------- Aparência e "esconder valores" ----------
 const raiz = document.documentElement;
 const escuroNoSistema = matchMedia('(prefers-color-scheme: dark)');
