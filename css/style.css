@@ -495,3 +495,4 @@ details[open].cartao summary { margin-bottom: 8px; }
 .desejo .botoes-lado { margin-top: 12px; }
 .desejo h2 { margin: 0; overflow-wrap: anywhere; }
 .valor-grande .unidade { font-size: 18px; font-weight: 500; color: var(--texto-2); letter-spacing: 0; }
+.botoes-lado > * { min-height: 48px; padding-top: 0; padding-bottom: 0; }

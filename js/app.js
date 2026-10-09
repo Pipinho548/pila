@@ -193,7 +193,7 @@ document.addEventListener('visibilitychange', () => {
 
 // ---------- Rotina (Comprar, A receber, Configurações, fechar mês, exportar) ----------
 const rotina = criarRotina({
-  estado, trocar, salvarCache, render, avisar, abrirFolha, fecharFolha, ctx, porDiaAgora,
+  estado, trocar, salvarCache, render, avisar, abrirFolha, fecharFolha, ctx, textoPorDia,
   recarregar: carregar,
 });
 
@@ -208,10 +208,15 @@ function avisar(texto, tipo = 'ok') {
   timerAviso = setTimeout(() => { el.hidden = true; }, 3500);
 }
 
-function porDiaAgora() {
+// Frase do "por dia" pros avisos. Antes do salário cair, diz quanto vai dar quando ele cair
+// (em vez de um "por dia" negativo).
+function textoPorDia() {
   const hoje = hojeSP();
   const mes = resumoMes(estado.dados, mesDe(hoje), hoje);
-  return quantoPossoGastar(mes.livre, gastosDoDia(estado.dados, hoje), hoje);
+  const gastosHoje = gastosDoDia(estado.dados, hoje);
+  if (mes.salarioCaiu) return `Daqui pra frente: ${moeda(quantoPossoGastar(mes.livre, gastosHoje, hoje).porDia)} por dia`;
+  const quandoCair = quantoPossoGastar(mes.livre + estado.dados.config.salario, gastosHoje, hoje).porDia;
+  return `Quando o salário cair: ${moeda(quandoCair)} por dia`;
 }
 
 // ---------- Toques nas telas ----------
@@ -287,7 +292,7 @@ async function confirmarSalario(botao) {
       salvarCache();
     });
     render();
-    avisar(`Salário lançado. Daqui pra frente: ${moeda(porDiaAgora().porDia)} por dia`);
+    avisar(`Salário lançado. ${textoPorDia()}`);
   } catch (e) {
     console.warn(e);
     avisar(ERRO_REDE, 'erro');
@@ -378,7 +383,7 @@ formLancar.addEventListener('submit', async (e) => {
     });
     folhaLancar.close();
     render();
-    avisar(`Lançado. Daqui pra frente: ${moeda(porDiaAgora().porDia)} por dia`);
+    avisar(`Lançado. ${textoPorDia()}`);
   } catch (err) {
     if (!semInternet(err)) {
       console.warn(err);
@@ -392,7 +397,7 @@ formLancar.addEventListener('submit', async (e) => {
     salvarCache();
     folhaLancar.close();
     render();
-    avisar(`Sem internet: ficou guardado aqui e vai quando a internet voltar. Daqui pra frente: ${moeda(porDiaAgora().porDia)} por dia`);
+    avisar(`Sem internet: ficou guardado aqui e vai quando a internet voltar. ${textoPorDia()}`);
   }
 });
 
@@ -420,7 +425,7 @@ folhaItem.addEventListener('click', async (e) => {
       });
       folhaItem.close();
       render();
-      avisar(`${item.nome} saiu do plano. Daqui pra frente: ${moeda(porDiaAgora().porDia)} por dia`);
+      avisar(`${item.nome} saiu do plano. ${textoPorDia()}`);
     } else if (alvo.dataset.acao === 'desmarcar-item') {
       await ocupado(alvo, 'Desmarcando...', () => desmarcarItem(item));
       folhaItem.close();
@@ -606,7 +611,7 @@ async function movimentarCaixinha(form, valor) {
   }]);
   trocar('lancamentos', l);
   salvarCache();
-  return `${tipo === 'deposito_caixinha' ? 'Guardado' : 'Resgatado'}. Daqui pra frente: ${moeda(porDiaAgora().porDia)} por dia`;
+  return `${tipo === 'deposito_caixinha' ? 'Guardado' : 'Resgatado'}. ${textoPorDia()}`;
 }
 
 async function marcarPasso(botao) {
@@ -646,7 +651,7 @@ folhaEditar.addEventListener('click', async (e) => {
     });
     folhaEditar.close();
     render();
-    avisar(`Apagado. Daqui pra frente: ${moeda(porDiaAgora().porDia)} por dia`);
+    avisar(`Apagado. ${textoPorDia()}`);
   } catch (err) {
     console.warn(err);
     avisar(ERRO_REDE, 'erro');
@@ -685,7 +690,7 @@ folhaEditar.addEventListener('submit', async (e) => {
     });
     folhaEditar.close();
     render();
-    avisar(`Salvo. Daqui pra frente: ${moeda(porDiaAgora().porDia)} por dia`);
+    avisar(`Salvo. ${textoPorDia()}`);
   } catch (err) {
     console.warn(err);
     erro.textContent = ERRO_REDE;

@@ -51,6 +51,18 @@ Em 1 ou 2 minutos o site atualiza. Se mudou arquivo do app, aumente `VERSAO` no 
 O repositório é público. Nenhum dado financeiro fica no código: tudo vive no Supabase, protegido por login e RLS.
 A pasta `privado/`, o `dados-iniciais.json` e qualquer backup estão no `.gitignore`.
 
+## Backup
+
+No app, vá em **Mais > Backup**:
+
+- **Backup completo**: um arquivo `pila-backup-AAAA-MM-DD.json` com todas as tabelas. Guarde fora do celular (Google Drive, e-mail pra você mesmo).
+- **Planilha do mês**: um `pila-AAAA-MM.csv` com os lançamentos do mês que está aberto na aba Mês. Abre direto no Excel.
+
+No iPhone abre a tela de compartilhar (escolha "Salvar em Arquivos"). No computador, baixa direto.
+Esses arquivos têm seus dados: não coloque na pasta do projeto sem o `.gitignore` (ele já ignora `*backup*` e `pila-*.csv`).
+
+Faça um backup completo uma vez por mês, de preferência quando fechar o mês.
+
 ## Supabase pausou?
 
 Projeto grátis pausa depois de uns dias sem uso. Entre em https://supabase.com/dashboard, abra o projeto e clique em **Restore project**. Os dados continuam lá.

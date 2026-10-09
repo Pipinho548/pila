@@ -85,7 +85,7 @@ export function criarRotina(api) {
       }]);
       trocar('lancamentos', l);
       trocar('desejos', await atualizar('desejos', desejo.id, { comprado_em: data, lancamento_id: l.id }));
-      return `Comprado! Daqui pra frente: ${moeda(api.porDiaAgora().porDia)} por dia`;
+      return `Comprado! ${api.textoPorDia()}`;
     },
 
     async 'form-receber'(f, form) {
@@ -120,7 +120,7 @@ export function criarRotina(api) {
       }]);
       trocar('lancamentos', l);
       trocar('a_receber', await atualizar('a_receber', r.id, { recebido_em: data, lancamento_id: l.id }));
-      return `Recebido. Daqui pra frente: ${moeda(api.porDiaAgora().porDia)} por dia`;
+      return `Recebido. ${api.textoPorDia()}`;
     },
 
     async 'form-config'(f) {
