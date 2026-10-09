@@ -1,7 +1,7 @@
 // Navegação, login e o que acontece em cada toque.
 import {
   configurado, sessaoAtual, entrar, sair, aoMudarSessao,
-  carregarTudo, inserir, atualizar, apagarOnde, importarDados,
+  carregarTudo, inserir, atualizar, apagar, apagarOnde, importarDados,
 } from './db.js';
 import { hoje as hojeSP, mesDe, lerValor, moeda, dataCurta, esc } from './format.js';
 import {
@@ -19,6 +19,7 @@ const conteudo = $('#conteudo');
 const folhaLancar = $('#folha-lancar');
 const formLancar = $('#form-lancar');
 const folhaItem = $('#folha-item');
+const folhaEditar = $('#folha-editar');
 
 const estado = {
   usuario: null,
@@ -28,6 +29,7 @@ const estado = {
   mesVisto: null,       // mês aberto na aba Mês
   conferencia: null,    // resultado da última conferência de saldo
   itemAberto: null,
+  lancamentoAberto: null,
 };
 
 // ---------- Service worker (PWA) ----------
@@ -151,6 +153,8 @@ conteudo.addEventListener('click', async (e) => {
     render();
   } else if (acao === 'abrir-item') {
     abrirItem(alvo.dataset.id);
+  } else if (acao === 'abrir-lancamento') {
+    abrirLancamento(alvo.dataset.id);
   } else if (acao === 'confirmar-salario') {
     await confirmarSalario(alvo);
   } else if (acao === 'ajustar') {
@@ -376,6 +380,75 @@ async function desmarcarItem(item) {
   }
   salvarCache();
 }
+
+// ---------- Editar ou apagar lançamento ----------
+function abrirLancamento(id) {
+  const l = estado.dados.lancamentos.find((x) => x.id === id);
+  if (!l) return;
+  estado.lancamentoAberto = l;
+  folhaEditar.innerHTML = telas.folhaLancamento(l, ctx());
+  folhaEditar.showModal();
+}
+
+folhaEditar.addEventListener('click', async (e) => {
+  if (e.target === folhaEditar || e.target.closest('[data-fechar]')) { folhaEditar.close(); return; }
+  const alvo = e.target.closest('[data-acao="apagar-lancamento"]');
+  if (!alvo) return;
+  const l = estado.lancamentoAberto;
+  if (!confirm(`Apagar "${l.descricao || 'lançamento'}" de ${moeda(Math.abs(l.valor))}?`)) return;
+  try {
+    await ocupado(alvo, 'Apagando...', async () => {
+      await apagar('lancamentos', l.id);
+      estado.dados.lancamentos = estado.dados.lancamentos.filter((x) => x.id !== l.id);
+      salvarCache();
+    });
+    folhaEditar.close();
+    render();
+    avisar(`Apagado. Daqui pra frente: ${moeda(porDiaAgora().porDia)} por dia`);
+  } catch (err) {
+    console.warn(err);
+    avisar(ERRO_REDE, 'erro');
+  }
+});
+
+folhaEditar.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const f = form.elements;
+  const l = estado.lancamentoAberto;
+  const erro = form.querySelector('.erro');
+  const valor = lerValor(f.valor.value);
+  // Só o ajuste pode ser negativo
+  if (!valor || (valor < 0 && l.tipo !== 'ajuste')) { erro.textContent = 'Valor inválido.'; return; }
+
+  const campos = { valor, data: f.data.value || l.data, descricao: f.descricao.value.trim() || null };
+  if (f.categoria) {
+    const cat = categoria(f.categoria.value);
+    const meio = f.meio.value || 'pix';
+    const { cartao_fecha_dia: fecha, cartao_vence_dia: vence } = estado.dados.config;
+    campos.categoria_id = cat.id;
+    campos.meio = meio;
+    if (meio === 'cartao') {
+      campos.fatura_mes = faturaDaCompra(campos.data, fecha, vence);
+      campos.regra_cartao = l.regra_cartao === 'assinatura' ? 'assinatura' : (cat.nome === 'Transporte' ? 'uber' : 'outra');
+    } else {
+      campos.fatura_mes = null;
+      campos.regra_cartao = null;
+    }
+  }
+  try {
+    await ocupado(form.querySelector('[type=submit]'), 'Salvando...', async () => {
+      trocar('lancamentos', await atualizar('lancamentos', l.id, campos));
+      salvarCache();
+    });
+    folhaEditar.close();
+    render();
+    avisar(`Salvo. Daqui pra frente: ${moeda(porDiaAgora().porDia)} por dia`);
+  } catch (err) {
+    console.warn(err);
+    erro.textContent = ERRO_REDE;
+  }
+});
 
 // ---------- Conferir saldo ----------
 async function conferirSaldo(form) {

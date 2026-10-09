@@ -35,11 +35,64 @@ function linhaLancamento(dados, l) {
   const entrada = l.tipo === 'entrada' || l.tipo === 'resgate_caixinha' || (l.tipo === 'ajuste' && l.valor > 0);
   const valor = l.tipo === 'ajuste' ? Math.abs(l.valor) : l.valor;
   return `
-    <li class="linha">
-      <span class="icone" aria-hidden="true">${esc(iconeLancamento(dados, l))}</span>
-      <span class="linha-texto"><span class="linha-titulo">${esc(titulo)}</span><span class="mini">${esc(detalhes)}</span></span>
-      <span class="num linha-valor${entrada ? ' positivo' : ''}">${entrada ? '+' : ''}${moeda(valor)}</span>
+    <li>
+      <button type="button" class="linha botao-linha" data-acao="abrir-lancamento" data-id="${l.id}">
+        <span class="icone" aria-hidden="true">${esc(iconeLancamento(dados, l))}</span>
+        <span class="linha-texto"><span class="linha-titulo">${esc(titulo)}</span><span class="mini">${esc(detalhes)}</span></span>
+        <span class="num linha-valor${entrada ? ' positivo' : ''}">${entrada ? '+' : ''}${moeda(valor)}</span>
+      </button>
     </li>`;
+}
+
+const NOMES_TIPO_LANCAMENTO = {
+  gasto: 'Gasto', entrada: 'Entrada', deposito_caixinha: 'Guardado no CDB', resgate_caixinha: 'Resgate do CDB',
+  pagamento_fatura: 'Pagamento de fatura', ajuste: 'Ajuste',
+};
+
+// Folha que abre ao tocar num lançamento: editar ou apagar
+export function folhaLancamento(l, ctx) {
+  const { dados } = ctx;
+  const cat = categoriaDe(dados, l.categoria_id);
+  const titulo = l.descricao || cat?.nome || NOMES_TIPO_LANCAMENTO[l.tipo];
+  const sub = [NOMES_TIPO_LANCAMENTO[l.tipo], dataBR(l.data), MEIOS[l.meio]].filter(Boolean).join(' · ');
+  const topo = `
+    <div class="folha-topo"><h2 tabindex="-1" autofocus>${esc(titulo)}</h2><button type="button" class="btn-fechar" data-fechar aria-label="Fechar">✕</button></div>
+    <p class="sub">${esc(sub)}</p>
+    ${l.observacao ? `<p class="mini obs">${esc(l.observacao)}</p>` : ''}`;
+
+  // Pagamento de conta do mês: desfaz pela conta, pra não ficar marcada como paga sem lançamento
+  if (l.item_mes_id) {
+    const item = dados.itens_mes.find((i) => i.id === l.item_mes_id);
+    return `${topo}
+      <p class="nota">Esse é o pagamento de <b>${esc(item?.nome ?? 'uma conta do mês')}</b>: ${moeda(l.valor)}.
+      Pra mudar ou desfazer, toca na conta na aba <a href="#mes" data-fechar>Mês</a> e desmarca.</p>`;
+  }
+
+  // Gasto normal: dá pra mudar tudo. Outros tipos e compras de antes do app: só valor, data e descrição.
+  const completo = l.tipo === 'gasto' && !l.antes_do_app;
+  const meios = l.meio === 'boleto' ? ['pix', 'debito', 'boleto', 'cartao', 'dinheiro'] : ['pix', 'debito', 'cartao', 'dinheiro'];
+  return `${topo}
+    <form id="form-editar" class="form">
+      <label class="campo">Valor
+        <input name="valor" inputmode="decimal" autocomplete="off" value="${valorParaTexto(l.valor)}" required>
+      </label>
+      ${completo ? `
+      <label class="campo">Categoria
+        <select name="categoria">
+          ${dados.categorias.map((c) => `<option value="${c.id}"${c.id === l.categoria_id ? ' selected' : ''}>${esc(c.icone ?? '')} ${esc(c.nome)}</option>`).join('')}
+        </select>
+      </label>
+      <fieldset class="segmentado">
+        <legend>Meio</legend>
+        ${meios.map((m) => `
+          <label><input type="radio" name="meio" value="${m}"${m === (l.meio ?? 'pix') ? ' checked' : ''}><span>${MEIOS[m]}</span></label>`).join('')}
+      </fieldset>` : ''}
+      <label class="campo">Descrição <input name="descricao" autocomplete="off" value="${esc(l.descricao ?? '')}"></label>
+      <label class="campo">Data <input type="date" name="data" value="${l.data}"></label>
+      <button type="submit" class="btn-primario">Salvar</button>
+      <button type="button" class="btn-perigo" data-acao="apagar-lancamento">Apagar lançamento</button>
+      <p class="erro" role="alert"></p>
+    </form>`;
 }
 
 const maisRecentes = (a, b) => b.data.localeCompare(a.data) || (b.created_at ?? '').localeCompare(a.created_at ?? '');

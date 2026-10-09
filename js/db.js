@@ -72,6 +72,11 @@ export async function atualizar(tabela, id, campos) {
   return data[0];
 }
 
+export async function apagar(tabela, id) {
+  const { error } = await supabase.from(tabela).delete().eq('id', id);
+  if (error) throw error;
+}
+
 export async function apagarOnde(tabela, coluna, valor) {
   const { error } = await supabase.from(tabela).delete().eq(coluna, valor);
   if (error) throw error;

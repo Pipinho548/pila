@@ -417,3 +417,25 @@ details[open].cartao summary { margin-bottom: 8px; }
 .form > *, .segmentado { min-width: 0; }
 .campo-valor input { width: 100%; }
 .folha { overflow-x: hidden; }
+
+/* Editar lançamento */
+.campo select {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--borda);
+  border-radius: 12px;
+  background: var(--fundo);
+  color: var(--texto);
+  min-height: 46px;
+  font-size: 16px;
+}
+.btn-perigo {
+  border: 1px solid color-mix(in srgb, var(--vermelho) 40%, transparent);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: transparent;
+  color: var(--vermelho);
+  font-weight: 500;
+  cursor: pointer;
+  width: 100%;
+}
