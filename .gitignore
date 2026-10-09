@@ -1,0 +1,15 @@
+# Dados pessoais: NUNCA sobem pro GitHub
+privado/
+dados-iniciais.json
+*backup*
+*.backup.json
+pila-export-*.json
+pila-*.csv
+ESPECIFICACAO*.md
+especificacao*.md
+
+# Coisas locais
+.claude/
+node_modules/
+.DS_Store
+Thumbs.db
