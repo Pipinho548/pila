@@ -2,7 +2,7 @@
 // Caminhos relativos porque no GitHub Pages o app roda em /pila/.
 // Mudou algum arquivo do app? Aumente a VERSAO.
 
-const VERSAO = 'pila-v2';
+const VERSAO = 'pila-v3';
 
 const SHELL = [
   './',
@@ -18,7 +18,8 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSAO).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  const pedidos = SHELL.map((url) => new Request(url, { cache: 'no-cache' }));
+  e.waitUntil(caches.open(VERSAO).then((c) => c.addAll(pedidos)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -52,8 +53,9 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== self.location.origin) return;
 
   // Rede primeiro (pega atualização na hora), cache se estiver sem internet.
+  // cache: 'no-cache' pergunta ao servidor se mudou, em vez de usar a cópia de 10 min do GitHub Pages.
   e.respondWith(
-    fetch(req)
+    fetch(req, { cache: 'no-cache' })
       .then((resp) => {
         if (resp.ok) {
           const copia = resp.clone();

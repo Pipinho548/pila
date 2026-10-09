@@ -13,6 +13,12 @@ let usuario = null;
 
 // ---------- Service worker (PWA) ----------
 if ('serviceWorker' in navigator) {
+  // Chegou versão nova do app: recarrega uma vez pra usar ela.
+  const tinhaVersao = Boolean(navigator.serviceWorker.controller);
+  let recarregou = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (tinhaVersao && !recarregou) { recarregou = true; location.reload(); }
+  });
   navigator.serviceWorker.register('./sw.js').catch((e) => console.warn('SW não registrou', e));
 }
 
