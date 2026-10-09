@@ -135,3 +135,28 @@ test('virada: conta avulsa adicionada antes do mês começar não impede a virad
   assert.equal(mesSemPlano(d, '2026-12-01'), null);
   assert.deepEqual(itensDaVirada(d, '2026-12'), []);
 });
+
+test('gráfico do mês: gastos acumulados por dia e o ritmo pra chegar no fim do mês', async () => {
+  const { serieGastosDoMes, resumoAssinaturas } = await import('../js/calc.js');
+  const d = base();
+  d.itens_mes = [];
+  d.lancamentos.push(
+    { data: '2026-11-05', tipo: 'entrada', valor: 300000, descricao: 'Salário' },
+    { data: '2026-11-02', tipo: 'gasto', valor: 1000, meio: 'pix' },
+    { data: '2026-11-04', tipo: 'gasto', valor: 500, meio: 'pix' },
+    { data: '2026-11-04', tipo: 'gasto', valor: 99999, meio: 'cartao', regra_cartao: 'uber' },
+  );
+  const s = serieGastosDoMes(d, '2026-11', '2026-11-05');
+  assert.equal(s.dias, 30);
+  assert.equal(s.ate, 5);
+  assert.deepEqual(s.pontos.map((p) => p.acumulado), [0, 0, 1000, 1000, 1500, 1500]);
+  assert.equal(s.total, 1500);
+  assert.equal(s.orcamento, 300000);
+  assert.equal(s.ritmoHoje, 50000);
+
+  const a = resumoAssinaturas(d, '2026-11-10');
+  assert.equal(a.quantas, 1);
+  assert.equal(a.total, 4000);
+  assert.equal(a.proxima.data, '2026-12-05');
+  assert.equal(a.emDias, 25);
+});

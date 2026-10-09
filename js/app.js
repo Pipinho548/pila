@@ -165,7 +165,12 @@ function rotaAtual() {
 }
 
 function ctx() {
-  return { ...estado, hoje: hojeSP(), naFila: estado.usuario ? lerFila(estado.usuario.id).length : 0 };
+  return {
+    ...estado,
+    hoje: hojeSP(),
+    naFila: estado.usuario ? lerFila(estado.usuario.id).length : 0,
+    tema: document.documentElement.dataset.tema,
+  };
 }
 
 let pilhaAnimou = false;
@@ -191,15 +196,37 @@ window.addEventListener('hashchange', () => {
   window.scrollTo(0, 0);
 });
 
-// O + some quando você rola pra baixo (pra não tampar valores) e volta quando rola pra cima
-let ultimoScroll = 0;
-window.addEventListener('scroll', () => {
-  const y = window.scrollY;
-  const fab = $('#btn-lancar');
-  if (y > ultimoScroll + 8 && y > 80) fab.classList.add('escondido');
-  else if (y < ultimoScroll - 8 || y <= 80) fab.classList.remove('escondido');
-  ultimoScroll = y;
-}, { passive: true });
+// ---------- Aparência e "esconder valores" ----------
+const raiz = document.documentElement;
+const escuroNoSistema = matchMedia('(prefers-color-scheme: dark)');
+
+// Cor da barra do iPhone acompanha o tema
+function corDaBarra() {
+  const escuro = raiz.dataset.tema === 'escuro' || (raiz.dataset.tema === 'auto' && escuroNoSistema.matches);
+  $('#cor-tema').setAttribute('content', escuro ? '#06100d' : '#f2f5f1');
+}
+corDaBarra();
+escuroNoSistema.addEventListener?.('change', corDaBarra);
+
+function mudarTema(tema) {
+  raiz.dataset.tema = tema;
+  try { localStorage.setItem('pila-tema', tema); } catch { /* ok */ }
+  corDaBarra();
+}
+
+// O olho embaça todos os valores (pra mostrar o celular pra alguém)
+const btnOlho = $('#btn-olho');
+function mostrarOlho() {
+  const escondido = raiz.classList.contains('esconder-valores');
+  btnOlho.setAttribute('aria-pressed', String(escondido));
+  btnOlho.setAttribute('aria-label', escondido ? 'Mostrar valores' : 'Esconder valores');
+}
+mostrarOlho();
+btnOlho.addEventListener('click', () => {
+  const escondido = raiz.classList.toggle('esconder-valores');
+  try { localStorage.setItem('pila-esconder', escondido ? '1' : '0'); } catch { /* ok */ }
+  mostrarOlho();
+});
 
 // Voltou pro app (ex.: abriu de novo no iPhone): busca dados novos
 document.addEventListener('visibilitychange', () => {
@@ -283,6 +310,7 @@ conteudo.addEventListener('submit', async (e) => {
 });
 
 conteudo.addEventListener('change', async (e) => {
+  if (e.target.name === 'tema') { mudarTema(e.target.value); return; }
   if (e.target.id === 'arquivo-importar' && e.target.files[0]) {
     await importarArquivo(e.target.files[0]);
     e.target.value = '';

@@ -149,12 +149,15 @@ export function dinheiro(centavos) {
   return `<span class="dinheiro"><span class="moeda">${v < 0 ? '-' : ''}R$</span>${reais}<span class="centavos">,${cent}</span></span>`;
 }
 
+// Valor dentro de uma frase (o olho embaça)
+const valor = (centavos) => `<span class="num">${moeda(centavos)}</span>`;
+
 // A pilha do mês: as três folhas da logo viram o gráfico.
 // Em cima o que está livre (bege), no meio o dia a dia (verde), embaixo as contas do plano (verde escuro).
 function pilhaDoMes(mes, dados, animar) {
   const livre = mes.salarioCaiu ? mes.livre : mes.livre + dados.config.salario;
   const partes = [
-    { nome: mes.salarioCaiu ? 'Livre' : 'Livre quando o salário cair', valor: livre, cor: 'palha' },
+    { nome: mes.salarioCaiu ? 'Livre' : 'Livre quando cair', valor: livre, cor: 'palha' },
     { nome: 'Dia a dia', valor: mes.gastos + mes.depositos, cor: 'erva' },
     { nome: 'Contas', valor: mes.plano, cor: 'pinheiro' },
   ];
@@ -188,6 +191,103 @@ function dataLonga(data) {
     .replace('-feira', '');
 }
 
+// Ícones dos blocos (linha fina, cor do texto)
+const ICONES = {
+  conta: '<path d="M3 7.5h16.5A1.5 1.5 0 0 1 21 9v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18z"/><path d="M3 7.5 6.5 4H18"/><circle cx="16.5" cy="13.5" r="1.2"/>',
+  reserva: '<rect x="4" y="10" width="16" height="10.5" rx="2.5"/><path d="M8 10V7.5a4 4 0 0 1 8 0V10"/><path d="M12 14.2v2.6"/>',
+  cartao: '<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6 15h4"/>',
+  assinatura: '<path d="M4.5 12a7.5 7.5 0 0 1 13-5.1L19.5 9"/><path d="M19.5 4.5V9H15"/><path d="M19.5 12a7.5 7.5 0 0 1-13 5.1L4.5 15"/><path d="M4.5 19.5V15H9"/>',
+};
+const icone = (nome) => `<span class="w-icone" aria-hidden="true"><svg viewBox="0 0 24 24">${ICONES[nome]}</svg></span>`;
+
+// Bloco pequeno (metade da largura): ícone em cima, valor embaixo
+function blocoPequeno({ href, nome, rotulo, valor, sub, classe = '', valorClasse = '' }) {
+  return `
+    <a class="widget mini-w ${classe}" href="${href}">
+      ${icone(nome)}
+      <span class="w-texto">
+        <span class="w-rotulo">${rotulo}</span>
+        <span class="w-valor num ${valorClasse}">${valor}</span>
+        <span class="w-sub">${sub}</span>
+      </span>
+    </a>`;
+}
+
+// Gastos do dia a dia acumulados no mês, contra o ritmo que chega certinho no fim do mês
+function graficoGastos(dados, hoje) {
+  const s = calc.serieGastosDoMes(dados, mesDe(hoje), hoje);
+  const L = 300;
+  const A = 120;
+  const max = Math.max(s.orcamento, s.total, 1) * 1.08;
+  const x = (dia) => (dia / s.dias) * L;
+  const y = (v) => A - 6 - (Math.max(0, v) / max) * (A - 14);
+  const linha = s.pontos.map((p, i) => `${i ? 'L' : 'M'}${x(p.dia).toFixed(1)},${y(p.acumulado).toFixed(1)}`).join(' ');
+  const fim = s.pontos.at(-1);
+  const area = `${linha} L${x(fim.dia).toFixed(1)},${A} L0,${A} Z`;
+  const ritmo = `M0,${y(0).toFixed(1)} L${L},${y(s.orcamento).toFixed(1)}`;
+  const diferenca = s.ritmoHoje - s.total;
+  const status = diferenca >= 0
+    ? `<span class="positivo">${valor(diferenca)} abaixo do ritmo</span>`
+    : `<span class="negativo">${valor(-diferenca)} acima do ritmo</span>`;
+  return `
+    <a class="widget grafico-w" href="#mes">
+      <span class="w-rotulo">Gastos do dia a dia</span>
+      <span class="w-valor grande num">${dinheiro(s.total)}</span>
+      <span class="w-sub">${status}</span>
+      <span class="grafico" role="img" aria-label="Gasto acumulado no mês comparado com o ritmo">
+        <svg viewBox="0 0 ${L} ${A}" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="grad-gasto" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" style="stop-color:var(--palha);stop-opacity:0.32"/>
+              <stop offset="1" style="stop-color:var(--palha);stop-opacity:0"/>
+            </linearGradient>
+          </defs>
+          <path class="g-ritmo" d="${ritmo}" vector-effect="non-scaling-stroke"/>
+          <path class="g-area" d="${area}" fill="url(#grad-gasto)"/>
+          <path class="g-linha" d="${linha}" vector-effect="non-scaling-stroke"/>
+        </svg>
+        <span class="g-ponto" style="left:${(x(fim.dia) / L * 100).toFixed(2)}%;top:${(y(fim.acumulado) / A * 100).toFixed(2)}%"></span>
+      </span>
+      <span class="legenda">
+        <span><i class="leg-linha"></i>gasto</span>
+        <span><i class="leg-ritmo"></i>ritmo pra chegar no dia ${s.dias} com ${valor(s.orcamento)}</span>
+      </span>
+    </a>`;
+}
+
+// Cores das categorias no bloco: da marca, mais duas de apoio pra dar contraste
+const CORES_CATEGORIA = ['var(--erva-claro)', 'var(--palha)', 'var(--erva)', '#7fa3ad', '#c9a08e', 'var(--tinta-3)'];
+
+function blocoCategorias(dados, hoje) {
+  const mes = mesDe(hoje);
+  const porCategoria = calc.gastosPorCategoria(dados, mes);
+  const lista = dados.categorias
+    .map((c) => ({ ...c, total: porCategoria.get(c.id) ?? 0 }))
+    .filter((c) => c.total > 0)
+    .sort((a, b) => b.total - a.total);
+  if (!lista.length) return '';
+  const total = calc.soma(lista, (c) => c.total);
+  const principais = lista.slice(0, 5).map((c, i) => ({ ...c, cor: CORES_CATEGORIA[i] }));
+  const resto = lista.slice(5);
+  const fatias = resto.length
+    ? [...principais, { id: resto.map((c) => c.id).join(','), nome: 'Outras', icone: '', total: calc.soma(resto, (c) => c.total), cor: CORES_CATEGORIA[5] }]
+    : principais;
+  return `
+    <section class="widget categorias-w">
+      <span class="w-topo"><span class="w-rotulo">Por categoria</span><span class="w-sub">${lista.length} ${lista.length === 1 ? 'categoria' : 'categorias'}</span></span>
+      <span class="w-valor grande num">${dinheiro(total)}</span>
+      <span class="barra-categorias" aria-hidden="true">
+        ${fatias.map((c) => `<span style="flex-grow:${c.total};background:${c.cor}"></span>`).join('')}
+      </span>
+      <ul class="lista legenda-categorias">${fatias.map((c) => `
+        <li><button type="button" class="botao-linha linha" data-acao="ver-categoria" data-ids="${c.id}" data-titulo="${esc(`${c.icone ?? ''} ${c.nome}`.trim())}" data-mes="${mes}">
+          <span class="bolinha" style="background:${c.cor}" aria-hidden="true"></span>
+          <span class="linha-texto"><span class="linha-titulo">${esc(c.nome)}</span></span>
+          <span class="num linha-valor">${moeda(c.total)} <span class="seta" aria-hidden="true">›</span></span>
+        </button></li>`).join('')}</ul>
+    </section>`;
+}
+
 // ---------- Hoje ----------
 
 export function telaHoje(ctx) {
@@ -205,6 +305,10 @@ export function telaHoje(ctx) {
   const alertas = calc.alertas(dados, hoje);
   const ultimos = [...dados.lancamentos].sort(maisRecentes).slice(0, 5);
   const paraFechar = calc.mesParaFechar(dados, hoje);
+  const conta = calc.saldoEsperado(dados);
+  const assinaturas = calc.resumoAssinaturas(dados, hoje);
+  const devo = calc.totalDevo(dados);
+  const libera = calc.linhaDoTempo(dados)[0];
   const salario = dados.config.salario;
 
   // Antes do salário cair o Livre fica negativo (dinheiro que não caiu não existe).
@@ -213,43 +317,72 @@ export function telaHoje(ctx) {
   if (!mes.salarioCaiu) {
     const quandoCair = calc.quantoPossoGastar(mes.livre + salario, gastosHoje, hoje);
     heroi = `
-      <section class="heroi">
+      <section class="widget heroi brilho-palha">
         <h1 class="heroi-rotulo">Quando o salário cair</h1>
         <p class="heroi-valor num${neg(quandoCair.porDia)}">${dinheiro(quandoCair.porDia)}<span class="unidade">por dia</span></p>
-        <p class="heroi-sub">até ${dataCurta(quandoCair.ultimoDia)}. O salário de ${moeda(salario)} cai dia ${dados.config.dia_salario}.</p>
+        <p class="heroi-sub">até ${dataCurta(quandoCair.ultimoDia)}. O salário de ${valor(salario)} cai dia ${dados.config.dia_salario}.</p>
         <button type="button" class="btn-primario largo" data-acao="confirmar-salario">Salário caiu</button>
+        ${pilhaDoMes(mes, dados, ctx.animar)}
       </section>`;
   } else {
     let sub;
-    if (q.aindaDaHoje < 0) sub = `Passou ${moeda(-q.aindaDaHoje)} hoje. Daqui pra frente fica ${moeda(q.porDia)} por dia.`;
+    if (q.aindaDaHoje < 0) sub = `Passou ${valor(-q.aindaDaHoje)} hoje. Daqui pra frente fica ${valor(q.porDia)} por dia.`;
     else if (q.diasDepoisDeHoje === 0) sub = 'Último dia do mês.';
-    else sub = `Daqui pra frente, ${moeda(q.porDia)} por dia até ${dataCurta(q.ultimoDia)}.`;
+    else sub = `Daqui pra frente, ${valor(q.porDia)} por dia até ${dataCurta(q.ultimoDia)}.`;
+    // O brilho do bloco diz como está o dia: verde tudo certo, vermelho passou
     heroi = `
-      <section class="heroi">
+      <section class="widget heroi ${q.aindaDaHoje < 0 ? 'brilho-tijolo' : 'brilho-erva'}">
         <h1 class="heroi-rotulo">Ainda dá hoje</h1>
         <p class="heroi-valor num${neg(q.aindaDaHoje)}">${dinheiro(q.aindaDaHoje)}</p>
         <p class="heroi-sub">${sub}</p>
+        ${pilhaDoMes(mes, dados, ctx.animar)}
       </section>`;
   }
 
   const proximas = mes.pendentes.slice(0, 3);
   const faltam = mes.pendentes.length - proximas.length;
+  const faturaMostrada = paraPagar[0] ?? fatura;
+  const faturaFechou = Boolean(paraPagar[0]);
 
   return `${data}
     ${heroi}
-    ${pilhaDoMes(mes, dados, ctx.animar)}
 
     ${ctx.naFila ? `<p class="faixa">${ctx.naFila === 1 ? '1 lançamento esperando' : `${ctx.naFila} lançamentos esperando`} internet pra ir pro Supabase.</p>` : ''}
     ${paraFechar ? cartaoFecharMes(paraFechar) : ''}
 
-    ${paraPagar.map((f) => `
-    <a class="cartao toque alerta-cartao linha-unica" href="#fatura">
-      <span><span class="rotulo">A fatura de ${dataCurta(f.vence)} fechou</span><br><b class="num">${moeda(f.total)}</b></span>
-      <span class="btn-mini">Pagar</span>
-    </a>`).join('')}
+    <div class="grade-w">
+      ${blocoPequeno({
+        href: '#conferir', nome: 'conta', rotulo: 'Na conta C6',
+        valor: conta ? moeda(conta.esperado) : 'Conferir',
+        sub: conta ? `conferido em ${dataCurta(conta.base.data)}` : 'digita o saldo do banco',
+      })}
+      ${reserva ? blocoPequeno({
+        href: '#caixinhas', nome: 'reserva', rotulo: 'Reserva', classe: 'brilho-erva',
+        valor: moeda(calc.saldoCaixinha(reserva, dados.lancamentos)), valorClasse: 'positivo', sub: 'guardado no CDB',
+      }) : ''}
+    </div>
 
-    <section class="cartao grupo">
-      <a class="grupo-topo" href="#mes"><h2>Falta pagar</h2><span class="num">${moeda(mes.faltaPagar)}</span></a>
+    ${graficoGastos(dados, hoje)}
+    ${blocoCategorias(dados, hoje)}
+
+    <div class="grade-w">
+      ${blocoPequeno({
+        href: '#fatura', nome: 'cartao', rotulo: faturaFechou ? 'Fatura fechou' : 'Fatura atual',
+        classe: faturaFechou ? 'brilho-palha' : '',
+        valor: moeda(faturaMostrada.total),
+        sub: faturaFechou ? `pagar até ${dataCurta(faturaMostrada.vence)}` : `vence ${dataCurta(faturaMostrada.vence)}`,
+      })}
+      ${blocoPequeno({
+        href: '#config', nome: 'assinatura', rotulo: 'Assinaturas',
+        valor: moeda(assinaturas.total),
+        sub: assinaturas.proxima
+          ? (assinaturas.emDias === 0 ? `${esc(assinaturas.proxima.nome)} hoje` : `próxima em ${assinaturas.emDias} ${assinaturas.emDias === 1 ? 'dia' : 'dias'}`)
+          : 'por mês',
+      })}
+    </div>
+
+    <section class="widget lista-w">
+      <a class="w-topo" href="#mes"><span class="w-rotulo">Falta pagar</span><span class="w-valor num">${moeda(mes.faltaPagar)}</span></a>
       ${proximas.length ? `<ul class="lista">${proximas.map((i) => `
         <li><button type="button" class="botao-linha linha" data-acao="abrir-item" data-id="${i.id}">
           <span class="linha-texto"><span class="linha-titulo">${esc(i.nome)}</span>
@@ -260,29 +393,23 @@ export function telaHoje(ctx) {
         : '<p class="vazio">Tudo pago este mês.</p>'}
     </section>
 
-    <section class="cartao grupo">
-      <ul class="lista">
-        <li><a class="linha linha-link" href="#fatura">
-          <span class="linha-texto"><span class="linha-titulo">Fatura aberta, vence ${dataCurta(fatura.vence)}</span>
-            <span class="mini">Uber ${moeda(fatura.uber)}, assinaturas ${moeda(fatura.assinaturas)}, outras ${moeda(fatura.outras)}</span></span>
-          <span class="num linha-valor">${moeda(fatura.total)}</span>
-        </a></li>
-        ${reserva ? `
-        <li><a class="linha linha-link" href="#caixinhas">
-          <span class="linha-texto"><span class="linha-titulo">${esc(reserva.nome)}</span><span class="mini">guardado</span></span>
-          <span class="num linha-valor positivo">${moeda(calc.saldoCaixinha(reserva, dados.lancamentos))}</span>
-        </a></li>` : ''}
-      </ul>
-    </section>
+    ${devo.total > 0 ? `
+    <a class="widget faixa-w" href="#dividas">
+      <span class="w-texto">
+        <span class="w-rotulo">Dívidas</span>
+        <span class="w-valor num">${moeda(devo.total)}</span>
+      </span>
+      ${libera ? `<span class="w-sub alinha-direita">Em ${esc(nomeMes(libera.mes))} sobram<br><b class="positivo num">+${moeda(libera.valor)} por mês</b></span>` : ''}
+    </a>` : ''}
 
     ${alertas.length ? `
-    <section class="cartao grupo">
-      <h2>Atenção</h2>
+    <section class="widget lista-w">
+      <span class="w-topo"><span class="w-rotulo">Atenção</span></span>
       <ul class="lista alertas">${alertas.map((a) => `<li class="alerta alerta-${a.tipo}"><span>${textoAlerta(a, hoje)}</span></li>`).join('')}</ul>
     </section>` : ''}
 
-    <section class="cartao grupo">
-      <h2>Últimos lançamentos</h2>
+    <section class="widget lista-w">
+      <span class="w-topo"><span class="w-rotulo">Últimos lançamentos</span></span>
       ${ultimos.length
         ? `<ul class="lista">${ultimos.map((l) => linhaLancamento(dados, l)).join('')}</ul>`
         : '<p class="vazio">Nada lançado ainda. Toca no + pra lançar o primeiro gasto.</p>'}
@@ -903,6 +1030,15 @@ export function telaMais(ctx) {
       <a href="#config"><span>Configurações</span><span aria-hidden="true">›</span></a>
       <a href="#como"><span>Como funciona</span><span aria-hidden="true">›</span></a>
     </nav>
+    <section class="cartao">
+      <h2>Aparência</h2>
+      <fieldset class="segmentado escolha-tema">
+        <legend>Aparência</legend>
+        ${[['escuro', 'Escuro'], ['claro', 'Claro'], ['auto', 'Automático']].map(([v, nome]) => `
+          <label><input type="radio" name="tema" value="${v}"${(ctx.tema ?? 'escuro') === v ? ' checked' : ''}><span>${nome}</span></label>`).join('')}
+      </fieldset>
+      <p class="mini">Automático segue o modo do iPhone.</p>
+    </section>
     <section class="cartao">
       <h2>Regras de ouro</h2>
       <ol class="regras">${REGRAS_DE_OURO.map((r) => `<li>${r}</li>`).join('')}</ol>

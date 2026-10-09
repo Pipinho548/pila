@@ -500,6 +500,44 @@ export function situacaoDesejo(desejo, dados, hoje, agora = Date.now()) {
   return { esfriando: agora < liberaEm, liberaEm, livre: mes.livre, cabeAgora, porDiaAntes: antes, porDiaDepois: depois, quandoCabe };
 }
 
+// ---------- Gráficos da tela Hoje ----------
+
+// Gastos do dia a dia acumulados dia a dia, e o "ritmo": quanto daria pra ter gasto até cada dia
+// pra chegar no fim do mês sem passar do que sobrou pro dia a dia.
+export function serieGastosDoMes(dados, mes, hoje) {
+  const r = resumoMes(dados, mes, hoje);
+  const dias = diasNoMes(mes);
+  const ate = mesDe(hoje) === mes ? diaDe(hoje) : (mes < mesDe(hoje) ? dias : 0);
+  const porDia = new Array(dias + 1).fill(0);
+  for (const l of dados.lancamentos) {
+    if (mesDe(l.data) === mes && contaNoLivre(l)) porDia[diaDe(l.data)] += l.valor;
+  }
+  const pontos = [{ dia: 0, acumulado: 0 }];
+  let acumulado = 0;
+  for (let d = 1; d <= ate; d++) {
+    acumulado += porDia[d];
+    pontos.push({ dia: d, acumulado });
+  }
+  // O que dá pra gastar no dia a dia no mês todo (antes do salário cair, conta com ele)
+  const orcamento = r.livre + r.gastos + (r.salarioCaiu ? 0 : (dados.config?.salario ?? 0));
+  const ritmoHoje = Math.round(orcamento * ate / dias);
+  return { dias, ate, pontos, total: r.gastos, orcamento, ritmoHoje };
+}
+
+// Assinaturas fixas ativas: total por mês e quando é a próxima cobrança
+export function resumoAssinaturas(dados, hoje) {
+  const fixas = dados.contas_fixas.filter((c) => c.ativa && c.tipo === 'assinatura');
+  const total = soma(fixas, (c) => c.valor_previsto);
+  let proxima = null;
+  for (const c of fixas) {
+    if (!c.dia) continue;
+    let data = dataNoMes(mesDe(hoje), c.dia);
+    if (data < hoje) data = dataNoMes(somarMeses(mesDe(hoje), 1), c.dia);
+    if (!proxima || data < proxima.data) proxima = { data, nome: c.nome };
+  }
+  return { quantas: fixas.length, total, proxima, emDias: proxima ? diasEntre(hoje, proxima.data) : null };
+}
+
 // ---------- Alertas da tela Hoje ----------
 
 export function alertas(dados, hoje) {
