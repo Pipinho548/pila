@@ -6,7 +6,7 @@ export const MEIOS = { pix: 'Pix', debito: 'Débito', cartao: 'Cartão', boleto:
 
 const REGRAS_DE_OURO = [
   'Salário caiu: paga primeiro contas e parcelas. O que sobrar é seu.',
-  'Cartão só pra Uber e assinatura.',
+  'Cartão só pra Uber, assinatura e o que só dá pra pagar no cartão.',
   'Nada parcelado novo até março/2027.',
   'Dinheiro que ainda não caiu não existe.',
   'Viu algo legal? Vai pra lista de compras e espera 2 dias.',
@@ -284,7 +284,6 @@ function textoAlerta(a, hoje) {
     case 'atrasada': return `<b>${esc(a.item.nome)}</b> venceu ${dataCurta(a.item.vencimento)} e não foi marcada como paga.`;
     case 'vence': return `<b>${esc(a.item.nome)}</b> ${quando(a.item.vencimento, hoje)}.`;
     case 'limite': return `<b>${esc(a.limite.nome)}</b> já usou ${a.limite.pct}% do limite.`;
-    case 'cartao': return `${a.quantas === 1 ? '1 compra' : `${a.quantas} compras`} no cartão fora da regra este mês (${moeda(a.total)}). Cartão é só pra Uber e assinatura.`;
     case 'fatura': return `A fatura de <b>${moeda(a.fatura.total)}</b> ${quando(a.fatura.vence, hoje)}. <a href="#fatura">Pagar</a>`;
     case 'prazo': return `<b>${esc(a.divida.nome)}</b>: o prazo acaba ${dataBR(a.divida.prazo)}. <a href="#dividas">Ver</a>`;
     default: return '';

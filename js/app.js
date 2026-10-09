@@ -354,10 +354,10 @@ function atualizarDica() {
   const quando = dataCurta(vencimentoDaFatura(fatura, vence));
   const ehUber = categoria(f.categoria.value)?.nome === 'Transporte';
   dica.hidden = false;
-  dica.classList.toggle('aviso-cartao', !ehUber);
+  dica.classList.remove('aviso-cartao');
   dica.textContent = ehUber
     ? `Uber no cartão: vai pra fatura de ${quando} e entra no plano desse mês. Não mexe no seu Livre de hoje.`
-    : `Cartão é só pra Uber e assinatura. Essa compra sai do seu Livre agora e fica reservada pra fatura de ${quando}.`;
+    : `No cartão: já sai do seu Livre agora e fica separado pra fatura de ${quando}. Quando ela chegar, o dinheiro já está lá.`;
 }
 
 formLancar.addEventListener('change', atualizarDica);

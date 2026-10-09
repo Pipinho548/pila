@@ -511,9 +511,8 @@ export function alertas(dados, hoje) {
   for (const limite of situacaoLimites(dados, mesDe(hoje))) {
     if (limite.cor !== 'verde') lista.push({ tipo: 'limite', limite });
   }
-  const foraDaRegra = dados.lancamentos.filter((l) =>
-    l.regra_cartao === 'outra' && !l.antes_do_app && mesDe(l.data) === mesDe(hoje));
-  if (foraDaRegra.length) lista.push({ tipo: 'cartao', total: soma(foraDaRegra), quantas: foraDaRegra.length });
+  // Compras no cartão fora do Uber não geram alerta: tem coisa que só dá pra pagar no cartão,
+  // e elas já saem do Livre na hora (aparecem na fatura como "Outras").
   for (const f of faturasParaPagar(dados, hoje)) {
     if (f.vence <= somarDias(hoje, 3)) lista.push({ tipo: 'fatura', fatura: f });
   }
