@@ -327,7 +327,7 @@ function linhaItem(item, dados, hoje) {
 
 function barra(usado, limite, cor) {
   const pct = Math.min(100, Math.round(usado * 100 / limite));
-  return `<div class="barra" role="img" aria-label="${pct}%"><span class="${cor}" style="width:${pct}%"></span></div>`;
+  return `<span class="barra" role="img" aria-label="${pct}%"><span class="${cor}" style="width:${pct}%"></span></span>`;
 }
 
 export function telaMes(ctx) {
@@ -390,19 +390,21 @@ export function telaMes(ctx) {
     <section class="cartao">
       <h2>Limites</h2>
       <ul class="lista limites">${limites.map((l) => `
-        <li>
-          <div class="limite-topo"><span>${esc(l.nome)}</span><span class="num">${moeda(l.usado)} de ${moeda(l.valor)}</span></div>
+        <li><button type="button" class="botao-limite" data-acao="ver-categoria" data-ids="${l.categorias.join(',')}" data-titulo="${esc(l.nome)}" data-mes="${mes}">
+          <span class="limite-topo"><span>${esc(l.nome)}</span><span class="num">${moeda(l.usado)} de ${moeda(l.valor)}</span></span>
           ${barra(l.usado, l.valor, l.cor)}
-        </li>`).join('')}
+        </button></li>`).join('')}
       </ul>
     </section>` : ''}
 
     <section class="cartao">
       <h2>Dia a dia por categoria</h2>
       ${categorias.length ? `<ul class="lista">${categorias.map((c) => `
-        <li class="linha"><span class="icone" aria-hidden="true">${esc(c.icone ?? '')}</span>
+        <li><button type="button" class="botao-linha linha" data-acao="ver-categoria" data-ids="${c.id}" data-titulo="${esc(`${c.icone ?? ''} ${c.nome}`.trim())}" data-mes="${mes}">
+          <span class="icone" aria-hidden="true">${esc(c.icone ?? '')}</span>
           <span class="linha-texto"><span class="linha-titulo">${esc(c.nome)}</span></span>
-          <span class="num linha-valor">${moeda(c.total)}</span></li>`).join('')}</ul>`
+          <span class="num linha-valor">${moeda(c.total)} <span class="seta" aria-hidden="true">›</span></span>
+        </button></li>`).join('')}</ul>`
         : '<p class="vazio">Nenhum gasto do dia a dia ainda.</p>'}
     </section>
 
@@ -459,6 +461,32 @@ function proximosMeses(ctx) {
           </button>
         </li>`).join('')}</ul>
     </section>`;
+}
+
+// Folha que abre ao tocar numa categoria (ou num limite): pra onde foi o dinheiro
+export function folhaGastosCategoria(titulo, ids, mes, ctx) {
+  const { dados, hoje } = ctx;
+  const g = calc.gastosDaCategoria(dados, mes, ids, hoje);
+  const quantos = g.lancamentos.length;
+  return `
+    <div class="folha-topo"><h2 tabindex="-1" autofocus>${esc(titulo)}</h2><button type="button" class="btn-fechar" data-fechar aria-label="Fechar">✕</button></div>
+    <p class="sub">${esc(nomeMes(mes))}</p>
+
+    <div class="cartao-topo bloco-topo">
+      <h3>Dia a dia</h3>
+      <p class="valor-medio num">${moeda(g.diaADia)}</p>
+    </div>
+    ${quantos
+      ? `<p class="mini">${quantos === 1 ? '1 lançamento' : `${quantos} lançamentos`}. Toca num pra mudar ou apagar.</p>
+         <ul class="lista">${g.lancamentos.map((l) => linhaLancamento(dados, l)).join('')}</ul>`
+      : '<p class="vazio">Nenhum gasto do dia a dia aqui.</p>'}
+
+    ${g.itens.length ? `
+    <div class="cartao-topo bloco-topo">
+      <h3>Contas do plano</h3>
+      <p class="valor-medio num">${moeda(g.plano)}</p>
+    </div>
+    <ul class="lista">${g.itens.map((i) => linhaItem(i, dados, hoje)).join('')}</ul>` : ''}`;
 }
 
 // Folha que abre ao tocar numa conta do mês

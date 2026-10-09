@@ -246,6 +246,21 @@ export function gastosPorCategoria(dados, mes) {
   return total;
 }
 
+// O que entrou numa ou mais categorias no mês: os gastos do dia a dia e as contas do plano.
+export function gastosDaCategoria(dados, mes, ids, hoje) {
+  const nas = (id) => ids.includes(id);
+  const lancamentos = dados.lancamentos
+    .filter((l) => mesDe(l.data) === mes && contaNoLivre(l) && nas(l.categoria_id))
+    .sort((a, b) => b.data.localeCompare(a.data) || (b.created_at ?? '').localeCompare(a.created_at ?? ''));
+  const itens = dados.itens_mes.filter((i) => i.mes === mes && nas(i.categoria_id)).sort(porVencimento);
+  return {
+    lancamentos,
+    itens,
+    diaADia: soma(lancamentos),
+    plano: soma(itens, (i) => valorItem(i, dados, hoje)),
+  };
+}
+
 export function corDoLimite(usado, limite) {
   const pct = usado * 100 / limite;
   if (pct > 100) return 'vermelho';

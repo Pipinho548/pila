@@ -232,3 +232,21 @@ test('projeção: usa o plano de verdade se existe; senão monta com contas fixa
   assert.deepEqual([jan.total, jan.sobra, jan.projetado], [150000, 150000, true]);
   assert.equal(planoDoMes(d, '2027-02').itens.find((i) => i.nome === 'Aluguel').vencimento, '2027-02-28');
 });
+
+test('gastos de uma categoria: dia a dia (mesmo total da lista) e contas do plano', async () => {
+  const { gastosDaCategoria } = await import('../js/calc.js');
+  const d = base();
+  d.itens_mes.push({ id: 'i1', mes: '2026-11', nome: 'Jogo parcelado', tipo: 'parcela', valor_previsto: 20000, valor_real: null, categoria_id: 'c-lazer', pago: true });
+  d.lancamentos.push(
+    lanc({ data: '2026-11-03', valor: 1500, categoria_id: 'c-lazer', descricao: 'Cinema' }),
+    lanc({ data: '2026-11-09', valor: 900, categoria_id: 'c-lazer', descricao: 'Pipoca' }),
+    lanc({ data: '2026-11-05', valor: 20000, categoria_id: 'c-lazer', item_mes_id: 'i1' }), // pagamento da conta: fica no plano
+    lanc({ data: '2026-11-04', valor: 700, categoria_id: 'c-mercado' }),
+    lanc({ data: '2026-10-30', valor: 300, categoria_id: 'c-lazer' }),
+  );
+  const g = gastosDaCategoria(d, '2026-11', ['c-lazer'], '2026-11-10');
+  assert.deepEqual(g.lancamentos.map((l) => l.descricao), ['Pipoca', 'Cinema']);
+  assert.equal(g.diaADia, 2400);
+  assert.equal(g.plano, 20000);
+  assert.equal(gastosDaCategoria(d, '2026-11', ['c-lazer', 'c-mercado'], '2026-11-10').diaADia, 3100);
+});

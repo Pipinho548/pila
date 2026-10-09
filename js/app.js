@@ -191,6 +191,16 @@ window.addEventListener('hashchange', () => {
   window.scrollTo(0, 0);
 });
 
+// O + some quando você rola pra baixo (pra não tampar valores) e volta quando rola pra cima
+let ultimoScroll = 0;
+window.addEventListener('scroll', () => {
+  const y = window.scrollY;
+  const fab = $('#btn-lancar');
+  if (y > ultimoScroll + 8 && y > 80) fab.classList.add('escondido');
+  else if (y < ultimoScroll - 8 || y <= 80) fab.classList.remove('escondido');
+  ultimoScroll = y;
+}, { passive: true });
+
 // Voltou pro app (ex.: abriu de novo no iPhone): busca dados novos
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && estado.usuario) carregar();
@@ -240,6 +250,8 @@ conteudo.addEventListener('click', async (e) => {
     abrirItem(alvo.dataset.id);
   } else if (acao === 'abrir-lancamento') {
     abrirLancamento(alvo.dataset.id);
+  } else if (acao === 'ver-categoria') {
+    abrirFolha(telas.folhaGastosCategoria(alvo.dataset.titulo, alvo.dataset.ids.split(','), alvo.dataset.mes, ctx()));
   } else if (acao === 'ir-mes') {
     estado.mesVisto = alvo.dataset.mes;
     render();
@@ -534,7 +546,11 @@ function fecharFolha() {
 folhaGeral.addEventListener('click', async (e) => {
   if (e.target === folhaGeral || e.target.closest('[data-fechar]')) { folhaGeral.close(); return; }
   const alvo = e.target.closest('[data-acao]');
-  if (alvo) await rotina.cliqueFolha(alvo.dataset.acao, alvo);
+  if (!alvo) return;
+  // Na folha da categoria: tocar num lançamento ou numa conta abre a folha dele
+  if (alvo.dataset.acao === 'abrir-lancamento') { folhaGeral.close(); abrirLancamento(alvo.dataset.id); return; }
+  if (alvo.dataset.acao === 'abrir-item') { folhaGeral.close(); abrirItem(alvo.dataset.id); return; }
+  await rotina.cliqueFolha(alvo.dataset.acao, alvo);
 });
 
 folhaGeral.addEventListener('input', (e) => rotina.digitou(e));
