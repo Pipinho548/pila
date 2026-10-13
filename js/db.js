@@ -100,6 +100,17 @@ export async function apagarInscricao(endpoint) {
 }
 
 // Pede pra função do Supabase mandar um aviso de teste pros aparelhos desta conta
+// Lançar por frase ou print: a função "ia" lê e devolve a lista pra conferir
+export async function lerComIA(pedido) {
+  const { data, error } = await supabase.functions.invoke('ia', { body: pedido });
+  if (error) {
+    let mensagem = null;
+    try { mensagem = (await error.context?.json())?.erro ?? null; } catch { /* resposta sem corpo */ }
+    throw Object.assign(new Error(mensagem ?? error.message), { daFuncao: Boolean(mensagem) });
+  }
+  return data;
+}
+
 export async function avisoDeTeste() {
   const { data, error } = await supabase.functions.invoke('avisos', { body: { tipo: 'teste' } });
   if (error) throw error;

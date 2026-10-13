@@ -461,3 +461,58 @@ export function folhaExtrato(a, ctx) {
     </details>` : ''}
     ${antigas.length ? `<p class="mini ext-antigas">${antigas.length === 1 ? '1 transação' : `${antigas.length} transações`} ${a.diaFechado ? 'até' : 'de antes de'} ${dataCurta(a.desde)} não aparecem: o saldo que você conferiu nesse dia já conta com elas.</p>` : ''}`;
 }
+
+// ---------- Lançar por frase ou print (IA) ----------
+
+export function folhaIA({ texto = '', erro = '' } = {}) {
+  return `${titulo('Escrever ou mandar print')}
+    <p class="sub">A IA lê e monta a lista. Você confere antes de lançar.</p>
+    <form id="form-ia" class="form">
+      <label class="campo">O que você gastou ou recebeu
+        <textarea name="texto" rows="3" autocomplete="off" placeholder="Ex.: 32 no mercado no pix e 15 de Uber ontem">${esc(texto)}</textarea>
+      </label>
+      <label class="btn-secundario largo arquivo"><span class="ia-arquivo">Mandar print (fatura, comprovante, extrato)</span>
+        <input type="file" name="print" accept="image/*">
+      </label>
+      <button type="submit" class="btn-primario">Ler</button>
+      <p class="erro" role="alert">${esc(erro)}</p>
+    </form>`;
+}
+
+function detalheIA(p) {
+  const meio = p.tipo === 'entrada' ? 'entrada' : (MEIOS[p.meio] ?? 'Pix');
+  const extra = p.noApp ? `, parece que já está no app (${p.noApp.descricao || 'lançamento'} de ${dataCurta(p.noApp.data)})` : '';
+  return `${dataCurta(p.data)}, ${meio}${extra}`;
+}
+
+export function folhaIAResultado(r, ctx) {
+  const { dados } = ctx;
+  const marcadas = r.propostas.filter((p) => p.marcada).length;
+  const avisos = [
+    r.aviso,
+    r.descartadas ? `${r.descartadas === 1 ? '1 linha veio' : `${r.descartadas} linhas vieram`} com valor estranho e ficou de fora.` : '',
+  ].filter(Boolean);
+  return `${titulo('Conferir antes de lançar')}
+    ${avisos.map((a) => `<p class="nota">${esc(a)}</p>`).join('')}
+    ${r.propostas.length ? `
+    <form id="form-ia-lancar" class="form">
+      <ul class="lista ext-lista">${r.propostas.map((p) => `
+        <li class="ext-linha">
+          <label class="ext-marca">
+            <input type="checkbox" name="usar" value="${p.id}"${p.marcada ? ' checked' : ''}>
+            <span class="linha-texto"><span class="linha-titulo">${esc(p.descricao)}</span><span class="mini">${esc(detalheIA(p))}</span></span>
+            <span class="num linha-valor${p.tipo === 'entrada' ? ' positivo' : ''}">${p.tipo === 'entrada' ? '+' : ''}${moeda(p.valor)}</span>
+          </label>
+          ${p.tipo === 'gasto' ? `
+          <select name="cat-${p.id}" class="ext-cat" aria-label="Categoria de ${esc(p.descricao)}">
+            ${opcoesCategoria(dados, p.categoria_id, 'Escolher categoria')}
+          </select>` : ''}
+        </li>`).join('')}
+      </ul>
+      <button type="submit" class="btn-primario">${marcadas ? `Lançar ${marcadas}` : 'Marca o que lançar'}</button>
+      <button type="button" class="btn-secundario" data-acao="ia-de-novo">Escrever de novo</button>
+      <p class="erro" role="alert"></p>
+    </form>` : `
+    <p class="vazio">Não achei nenhum lançamento aí.</p>
+    <button type="button" class="btn-secundario largo" data-acao="ia-de-novo">Tentar de novo</button>`}`;
+}

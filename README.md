@@ -75,6 +75,15 @@ O arquivo é lido no próprio celular e não é enviado pra lugar nenhum. O app 
 Importar o mesmo extrato de novo não duplica nada. A categoria que você escolher fica lembrada pra próxima vez.
 O leitor de PDF (pdf.js) vem do jsDelivr na primeira vez e fica guardado no celular.
 
+## Lançar por frase ou print (IA)
+
+Na folha de Lançar, **Escrever ou mandar print**: você escreve ("32 no mercado no pix e 15 de Uber") ou manda um print (fatura, comprovante, extrato). O Claude Sonnet 5.5 lê e monta a lista; você confere, ajusta a categoria e toca em Lançar. O que já parece estar no app vem desmarcado.
+
+Peças:
+- `supabase/functions/ia/index.ts`: função que chama a API da Anthropic (só com você logado).
+- Segredo da função `ANTHROPIC_API_KEY` (console.anthropic.com > API Keys). Ponha um limite de gasto mensal no Console.
+- Custo: centavos por uso; uns US$ 1,50 por mês com uso diário.
+
 ## Backup
 
 No app, vá em **Mais > Backup**:

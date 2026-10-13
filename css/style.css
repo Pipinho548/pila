@@ -791,6 +791,20 @@ details[open].cartao > summary { margin-bottom: 6px; }
 .bloco-topo { margin-top: 18px; margin-bottom: 4px; }
 .bloco-topo h3 { font-size: 17px; }
 
+/* Lançar por frase ou print (IA) */
+.btn-ia {
+  width: 100%;
+  margin: -2px 0 2px;
+  padding: 10px 14px;
+  border: 1.5px dashed var(--linha);
+  border-radius: var(--raio-p);
+  background: none;
+  color: var(--erva-claro);
+  font-weight: 500;
+  cursor: pointer;
+}
+.btn-ia:focus-visible { outline: 2px solid var(--palha); outline-offset: 2px; }
+
 /* Extrato do C6: cada linha tem a marquinha, o texto, o valor e (se for gasto) a categoria */
 .ext-lista > li { padding: 12px 0; }
 .ext-marca {

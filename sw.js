@@ -2,7 +2,7 @@
 // Caminhos relativos porque no GitHub Pages o app roda em /pila/.
 // Mudou algum arquivo do app? Aumente a VERSAO.
 
-const VERSAO = 'pila-v21';
+const VERSAO = 'pila-v22';
 
 const SHELL = [
   './',
@@ -22,6 +22,8 @@ const SHELL = [
   './js/fila.js',
   './js/extrato.js',
   './js/acoes-extrato.js',
+  './js/ia.js',
+  './js/acoes-ia.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/apple-touch-icon.png',

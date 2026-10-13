@@ -17,6 +17,7 @@ import * as telas from './telas.js';
 import * as telasRotina from './telas-rotina.js';
 import { criarRotina } from './acoes-rotina.js';
 import { criarExtrato } from './acoes-extrato.js';
+import { criarIA } from './acoes-ia.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -39,6 +40,7 @@ const estado = {
   itemAberto: null,
   lancamentoAberto: null,
   extrato: null,        // extrato do C6 aberto (o que falta lançar)
+  ia: null,             // o que a IA leu, esperando você conferir
 };
 
 // ---------- Service worker (PWA) ----------
@@ -326,6 +328,9 @@ const extrato = criarExtrato({
   estado, trocar, salvarCache, render, avisar, abrirFolha, fecharFolha, ctx, textoPorDia, pagarItem,
 });
 
+// ---------- Lançar por frase ou print (IA) ----------
+const ia = criarIA({ estado, trocar, salvarCache, render, avisar, abrirFolha, fecharFolha, ctx, textoPorDia });
+
 // ---------- Aviso rápido ----------
 let timerAviso;
 function avisar(texto, tipo = 'ok') {
@@ -452,6 +457,11 @@ $('#btn-lancar').addEventListener('click', () => {
   prepararLancar();
   folhaLancar.showModal();
   formLancar.elements.valor.focus();
+});
+
+$('#btn-ia').addEventListener('click', () => {
+  folhaLancar.close();
+  ia.abrir();
 });
 
 function prepararLancar() {
@@ -711,15 +721,20 @@ folhaGeral.addEventListener('click', async (e) => {
   // Na folha da categoria: tocar num lançamento ou numa conta abre a folha dele
   if (alvo.dataset.acao === 'abrir-lancamento') { folhaGeral.close(); abrirLancamento(alvo.dataset.id); return; }
   if (alvo.dataset.acao === 'abrir-item') { folhaGeral.close(); abrirItem(alvo.dataset.id); return; }
+  if (ia.clique(alvo.dataset.acao)) return;
   await rotina.cliqueFolha(alvo.dataset.acao, alvo);
 });
 
 folhaGeral.addEventListener('input', (e) => rotina.digitou(e));
-folhaGeral.addEventListener('change', (e) => extrato.mudou(e));
+folhaGeral.addEventListener('change', (e) => {
+  extrato.mudou(e);
+  ia.mudou(e);
+});
 
 folhaGeral.addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = e.target;
+  if (await ia.enviar(form)) return;
   if (form.id === 'form-extrato') {
     await extrato.enviar(form);
     return;
