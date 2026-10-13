@@ -464,19 +464,27 @@ export function folhaExtrato(a, ctx) {
 
 // ---------- Lançar por frase ou print (IA) ----------
 
+const ICONE_PRINT = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="9" cy="10" r="2" fill="currentColor"/><path d="M4 18l5-5 4 4 3-3 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>';
+
+// O + abre aqui: escreve do seu jeito ou manda um print. O manual fica no botão de baixo.
 export function folhaIA({ texto = '', erro = '' } = {}) {
-  return `${titulo('Escrever ou mandar print')}
-    <p class="sub">A IA lê e monta a lista. Você confere antes de lançar.</p>
+  return `
+    <div class="folha-topo"><h2>Lançar</h2>${fechar}</div>
     <form id="form-ia" class="form">
-      <label class="campo">O que você gastou ou recebeu
-        <textarea name="texto" rows="3" autocomplete="off" placeholder="Ex.: 32 no mercado no pix e 15 de Uber ontem">${esc(texto)}</textarea>
+      <label class="ia-caixa">
+        <span class="so-leitor">O que você gastou ou recebeu</span>
+        <textarea name="texto" rows="3" autocomplete="off" autofocus placeholder="Escreve do seu jeito. Ex.: 32 no mercado no pix e 15 de Uber ontem">${esc(texto)}</textarea>
       </label>
-      <label class="btn-secundario largo arquivo"><span class="ia-arquivo">Mandar print (fatura, comprovante, extrato)</span>
-        <input type="file" name="print" accept="image/*">
-      </label>
-      <button type="submit" class="btn-primario">Ler</button>
+      <div class="ia-acoes">
+        <label class="btn-secundario arquivo ia-print">${ICONE_PRINT}<span class="ia-arquivo">Print</span>
+          <input type="file" name="print" accept="image/*" aria-label="Mandar print">
+        </label>
+        <button type="submit" class="btn-primario">Ler</button>
+      </div>
+      <p class="mini">Print da fatura, de um comprovante ou do extrato também serve. A IA monta a lista e você confere antes de lançar.</p>
       <p class="erro" role="alert">${esc(erro)}</p>
-    </form>`;
+    </form>
+    <button type="button" class="btn-secundario largo ia-manual" data-acao="lancar-manual">Lançar à mão</button>`;
 }
 
 function detalheIA(p) {

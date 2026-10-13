@@ -804,6 +804,23 @@ details[open].cartao > summary { margin-bottom: 6px; }
   cursor: pointer;
 }
 .btn-ia:focus-visible { outline: 2px solid var(--palha); outline-offset: 2px; }
+.ia-caixa textarea {
+  width: 100%;
+  min-height: 104px;
+  padding: 14px 16px;
+  border: 1.5px solid var(--linha);
+  border-radius: var(--raio-p);
+  background: var(--superficie-2);
+  color: var(--tinta);
+  font-size: 17px;
+  line-height: 1.4;
+  resize: none;
+}
+.ia-caixa textarea:focus { border-color: var(--palha); outline: none; }
+.ia-acoes { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; }
+.ia-print { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding-inline: 18px; }
+.ia-print svg { width: 20px; height: 20px; flex: none; }
+.ia-manual { margin-top: 14px; }
 
 /* Extrato do C6: cada linha tem a marquinha, o texto, o valor e (se for gasto) a categoria */
 .ext-lista > li { padding: 12px 0; }

@@ -77,7 +77,7 @@ O leitor de PDF (pdf.js) vem do jsDelivr na primeira vez e fica guardado no celu
 
 ## Lançar por frase ou print (IA)
 
-Na folha de Lançar, **Escrever ou mandar print**: você escreve ("32 no mercado no pix e 15 de Uber") ou manda um print (fatura, comprovante, extrato). O Claude Sonnet 5.5 lê e monta a lista; você confere, ajusta a categoria e toca em Lançar. O que já parece estar no app vem desmarcado.
+O **+** abre direto o "Lançar" com IA (o manual fica em **Lançar à mão**; sem internet o + abre o manual): você escreve ("32 no mercado no pix e 15 de Uber") ou manda um print (fatura, comprovante, extrato). O Claude Sonnet 5.5 lê e monta a lista; você confere, ajusta a categoria e toca em Lançar. O que já parece estar no app vem desmarcado.
 
 Peças:
 - `supabase/functions/ia/index.ts`: função que chama a API da Anthropic (só com você logado).

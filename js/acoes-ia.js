@@ -94,8 +94,10 @@ export function criarIA(api) {
   function mudou(e) {
     const form = e.target.form;
     if (form?.id === 'form-ia' && e.target.name === 'print') {
-      const nome = e.target.files[0]?.name;
-      form.querySelector('.ia-arquivo').textContent = nome ? `Print: ${nome}` : 'Mandar print (fatura, comprovante, extrato)';
+      if (e.target.files[0]) {
+        form.querySelector('.ia-arquivo').textContent = 'Print escolhido';
+        form.requestSubmit();
+      }
       return;
     }
     if (form?.id !== 'form-ia-lancar') return;

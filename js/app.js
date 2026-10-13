@@ -454,10 +454,16 @@ $('#btn-lancar').addEventListener('click', () => {
     avisar('Importa os dados iniciais primeiro (aba Mais).', 'erro');
     return;
   }
+  // A IA precisa de internet: sem ela, vai direto pro lançamento à mão
+  if (navigator.onLine === false) abrirLancarManual();
+  else ia.abrir();
+});
+
+function abrirLancarManual() {
   prepararLancar();
   folhaLancar.showModal();
   formLancar.elements.valor.focus();
-});
+}
 
 $('#btn-ia').addEventListener('click', () => {
   folhaLancar.close();
@@ -721,6 +727,7 @@ folhaGeral.addEventListener('click', async (e) => {
   // Na folha da categoria: tocar num lançamento ou numa conta abre a folha dele
   if (alvo.dataset.acao === 'abrir-lancamento') { folhaGeral.close(); abrirLancamento(alvo.dataset.id); return; }
   if (alvo.dataset.acao === 'abrir-item') { folhaGeral.close(); abrirItem(alvo.dataset.id); return; }
+  if (alvo.dataset.acao === 'lancar-manual') { folhaGeral.close(); abrirLancarManual(); return; }
   if (ia.clique(alvo.dataset.acao)) return;
   await rotina.cliqueFolha(alvo.dataset.acao, alvo);
 });
