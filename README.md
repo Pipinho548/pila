@@ -53,7 +53,9 @@ A pasta `privado/`, o `dados-iniciais.json` e qualquer backup estão no `.gitign
 
 ## Avisos de vencimento (iPhone)
 
-Todo dia às 9h, se tiver conta vencendo hoje ou amanhã, chega uma notificação. Funciona no iPhone com iOS 16.4 ou mais novo, com o Pila aberto pelo ícone da tela inicial.
+Todo dia às 9h chega uma notificação com quanto dá pra gastar hoje e por dia (a mesma conta da tela Hoje) e as contas vencendo hoje ou amanhã. Funciona no iPhone com iOS 16.4 ou mais novo, com o Pila aberto pelo ícone da tela inicial.
+
+A função usa as contas do próprio app (`js/calc.js`) numa versão fixa, pelo jsDelivr. Mudou alguma regra no `calc.js`? Troque o commit no começo de `supabase/functions/avisos/index.ts` e publique a função de novo.
 
 Peças:
 - `supabase/avisos.sql`: tabela dos aparelhos (rodar no SQL Editor).

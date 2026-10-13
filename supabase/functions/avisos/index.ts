@@ -1,4 +1,5 @@
-// Função do Supabase: manda aviso no iPhone quando tem conta vencendo.
+// Função do Supabase: o aviso das 9h no iPhone.
+// Todo dia: quanto dá pra gastar hoje e por dia (a mesma conta da tela Hoje) e as contas vencendo.
 //
 // Quem chama:
 //   - o agendamento (pg_cron), todo dia às 9h de Brasília, com o cabeçalho x-pila-segredo
@@ -8,9 +9,14 @@
 //   PILA_VAPID    chaves do serviço de notificação (JSON)
 //   PILA_SEGREDO  senha que só o agendamento conhece
 // O Supabase já dá SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY pra função.
+//
+// As contas vêm do próprio app (calc.js), numa versão fixa do GitHub servida pelo jsDelivr.
+// Mudou alguma regra no calc.js? Troque o código da versão (o commit) abaixo e publique a função de novo.
 
-import { createClient } from 'npm:@supabase/supabase-js@2.115.0';
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.115.0';
 import * as webpush from 'jsr:@negrel/webpush@0.5.0';
+import { resumoMes, gastosDoDia, quantoPossoGastar, mesSemPlano } from 'https://cdn.jsdelivr.net/gh/Pipinho548/pila@4380c356bace13d74457090136da83aada7db52c/js/calc.js';
+import { mesDe, nomeMes } from 'https://cdn.jsdelivr.net/gh/Pipinho548/pila@4380c356bace13d74457090136da83aada7db52c/js/format.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -36,9 +42,59 @@ function somarDias(data: string, n: number): string {
 const dataCurta = (data: string) => `${data.slice(8, 10)}/${data.slice(5, 7)}`;
 
 type Aviso = { titulo: string; corpo: string };
+// deno-lint-ignore no-explicit-any
+type Admin = SupabaseClient<any, any, any, any, any>;
 
-// O que avisar hoje: contas não pagas vencendo hoje ou amanhã, e prazos de dívidas chegando
-async function avisosDoDia(admin: ReturnType<typeof createClient>, usuario: string, hoje: string): Promise<Aviso[]> {
+// Tudo de uma tabela desse usuário (o Supabase devolve no máximo 1000 linhas por vez)
+async function tabela(admin: Admin, nome: string, usuario: string) {
+  const linhas: Record<string, unknown>[] = [];
+  for (let de = 0; ; de += 1000) {
+    const { data, error } = await admin.from(nome).select('*').eq('user_id', usuario)
+      .order('created_at').range(de, de + 999);
+    if (error) throw error;
+    linhas.push(...data);
+    if (data.length < 1000) return linhas;
+  }
+}
+
+// Os dados que a tela Hoje usa pra calcular o "ainda dá hoje"
+async function carregarDados(admin: Admin, usuario: string) {
+  const nomes = ['config', 'categorias', 'contas_fixas', 'dividas', 'parcelas', 'itens_mes', 'lancamentos'];
+  const tabelas = await Promise.all(nomes.map((n) => tabela(admin, n, usuario)));
+  const dados: Record<string, unknown> = Object.fromEntries(nomes.map((n, i) => [n, tabelas[i]]));
+  dados.config = (dados.config as unknown[])[0] ?? null;
+  return dados;
+}
+
+// Quanto dá pra gastar hoje e por dia, igual à tela Hoje
+function quantoDa(dados: any, hoje: string): Aviso | null {
+  if (!dados.config) return null;
+  const semPlano = mesSemPlano(dados, hoje);
+  if (semPlano) {
+    return { titulo: `Começou ${nomeMes(semPlano)}`, corpo: 'Abre o Pila pra montar o plano do mês e ver quanto dá por dia.' };
+  }
+  const mes = resumoMes(dados, mesDe(hoje), hoje);
+  const gastosHoje = gastosDoDia(dados, hoje);
+  // Antes do salário cair o Livre fica negativo: mostra quanto vai dar quando ele cair
+  if (!mes.salarioCaiu) {
+    const q = quantoPossoGastar(mes.livre + dados.config.salario, gastosHoje, hoje);
+    return {
+      titulo: `Quando o salário cair: ${moeda(q.porDia)} por dia`,
+      corpo: `Até ${dataCurta(q.ultimoDia)}. Quando ele cair, toca em "Salário caiu" no Pila.`,
+    };
+  }
+  const q = quantoPossoGastar(mes.livre, gastosHoje, hoje);
+  if (q.aindaDaHoje < 0) {
+    return { titulo: `Hoje: ${moeda(q.aindaDaHoje)}`, corpo: `O Livre do mês está em ${moeda(mes.livre)}.` };
+  }
+  return {
+    titulo: `Hoje dá ${moeda(q.aindaDaHoje)}`,
+    corpo: q.diasDepoisDeHoje === 0 ? 'Último dia do mês.' : `Daqui pra frente, ${moeda(q.porDia)} por dia até ${dataCurta(q.ultimoDia)}.`,
+  };
+}
+
+// O que avisar hoje: quanto dá pra gastar (com as contas vencendo hoje ou amanhã) e prazos de dívidas
+async function avisosDoDia(admin: Admin, usuario: string, hoje: string): Promise<Aviso[]> {
   const amanha = somarDias(hoje, 1);
   const { data: contas } = await admin
     .from('itens_mes')
@@ -49,22 +105,28 @@ async function avisosDoDia(admin: ReturnType<typeof createClient>, usuario: stri
     .lte('vencimento', amanha)
     .order('vencimento');
 
-  const avisos: Aviso[] = [];
   const lista = contas ?? [];
   const valor = (c: { valor_real: number | null; valor_previsto: number }) => moeda(c.valor_real ?? c.valor_previsto);
-  if (lista.length === 1) {
-    const c = lista[0];
-    avisos.push({
-      titulo: `${c.vencimento === hoje ? 'Vence hoje' : 'Vence amanhã'}: ${c.nome}`,
-      corpo: `${valor(c)}. Quando pagar, marca no Pila.`,
-    });
-  } else if (lista.length > 1) {
-    const deHoje = lista.filter((c) => c.vencimento === hoje).length;
-    avisos.push({
-      titulo: deHoje === lista.length ? `${lista.length} contas vencem hoje`
-        : deHoje === 0 ? `${lista.length} contas vencem amanhã` : `${lista.length} contas vencem hoje e amanhã`,
-      corpo: lista.map((c) => `${c.nome} ${valor(c)}`).join(', '),
-    });
+  const vencem = (quando: string, dia: string) => {
+    const doDia = lista.filter((c) => c.vencimento === dia);
+    if (!doDia.length) return '';
+    return `${doDia.length === 1 ? 'Vence' : 'Vencem'} ${quando}: ${doDia.map((c) => `${c.nome} ${valor(c)}`).join(', ')}.`;
+  };
+  const textoContas = [vencem('hoje', hoje), vencem('amanhã', amanha)].filter(Boolean).join(' ');
+
+  // Se a conta do dia falhar por algum motivo, o aviso das contas vencendo sai do mesmo jeito
+  let resumo: Aviso | null = null;
+  try {
+    resumo = quantoDa(await carregarDados(admin, usuario), hoje);
+  } catch (e) {
+    console.error('Falhou ao calcular o dia', String(e));
+  }
+
+  const avisos: Aviso[] = [];
+  if (resumo) {
+    avisos.push({ titulo: resumo.titulo, corpo: [resumo.corpo, textoContas].filter(Boolean).join(' ') });
+  } else if (textoContas) {
+    avisos.push({ titulo: lista.length === 1 ? 'Conta vencendo' : 'Contas vencendo', corpo: `${textoContas} Quando pagar, marca no Pila.` });
   }
 
   // Prazos de dívidas (ex.: último dia pra fechar um acordo com desconto): avisa com 7 dias, 1 dia e no dia
@@ -137,9 +199,9 @@ Deno.serve(async (req) => {
   let enviados = 0;
   let removidos = 0;
   for (const [usuario, aparelhos] of porUsuario) {
-    const avisos = teste
-      ? [{ titulo: 'Pila', corpo: 'Os avisos estão funcionando. Quando tiver conta vencendo, eles chegam às 9h.' }]
-      : await avisosDoDia(admin, usuario, hoje);
+    // No teste manda o aviso de hoje de verdade, pra você ver como ele chega às 9h
+    const avisos = await avisosDoDia(admin, usuario, hoje);
+    if (teste && !avisos.length) avisos.push({ titulo: 'Pila', corpo: 'Os avisos estão funcionando. Eles chegam todo dia às 9h.' });
     for (const aviso of avisos) {
       for (const a of aparelhos) {
         try {
