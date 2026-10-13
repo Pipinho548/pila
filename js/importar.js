@@ -142,3 +142,40 @@ export const ORDEM_IMPORTACAO = [
   'categorias', 'caixinhas', 'contas_fixas', 'dividas', 'parcelas', 'passos_divida',
   'itens_mes', 'lancamentos', 'limites', 'desejos', 'a_receber', 'saldos_conferidos',
 ];
+
+// ---------- Começar do zero (conta nova, sem arquivo) ----------
+
+export const CATEGORIAS_PADRAO = [
+  ['Moradia', '🏠'], ['Mercado', '🛒'], ['Comida fora', '🍔'], ['Lazer e games', '🎮'],
+  ['Transporte', '🚗'], ['Contas e assinaturas', '📄'], ['Saúde e academia', '💪'], ['Cuidados pessoais', '💈'],
+  ['Casa', '🛋️'], ['Presentes', '🎁'], ['Parcelas e dívidas', '💳'], ['Outros', '📦'],
+];
+
+// O mínimo pra começar: o salário, os dias do cartão e o banco. O resto se coloca em Configurações.
+// Devolve as linhas; as categorias que já existirem (tentativa anterior que parou no meio) não repetem.
+export function comecoDoZero({ salario, diaSalario, fecha, vence, banco }, hoje, jaTem = { categorias: [], caixinhas: [] }) {
+  const dia = (n, nome) => {
+    if (!Number.isInteger(n) || n < 1 || n > 31) throw new Error(`${nome}: os dias vão de 1 a 31.`);
+    return n;
+  };
+  if (!Number.isInteger(salario) || salario < 0) throw new Error('Salário inválido.');
+  const nomes = new Set(jaTem.categorias.map((c) => c.nome));
+  return {
+    categorias: CATEGORIAS_PADRAO
+      .map(([nome, icone], ordem) => ({ nome, icone, ordem }))
+      .filter((c) => !nomes.has(c.nome)),
+    caixinhas: jaTem.caixinhas.length ? [] : [{ nome: 'Reserva', saldo_inicial: 0, data_inicio: hoje, ordem: 0 }],
+    config: {
+      salario,
+      dia_salario: dia(diaSalario, 'Dia do salário'),
+      cartao_fecha_dia: dia(fecha, 'Fechamento do cartão'),
+      cartao_vence_dia: dia(vence, 'Vencimento da fatura'),
+      inicio_controle: hoje,
+      banco: String(banco ?? '').trim().slice(0, 30) || 'C6',
+    },
+  };
+}
+
+// Regras de ouro de cada um (uma por linha)
+export const regrasDeOuro = (config) => String(config?.regras_de_ouro ?? '')
+  .split('\n').map((r) => r.trim()).filter(Boolean);

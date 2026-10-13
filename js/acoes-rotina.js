@@ -1,6 +1,6 @@
 // O que acontece nos toques da rotina: Comprar, A receber, Configurações, fechar mês e exportar.
 // O app.js passa as ferramentas dele (estado, gravar na tela, avisos) no "api".
-import { inserir, atualizar, apagar } from './db.js';
+import { inserir, atualizar, apagar, trocarSenha } from './db.js';
 import { hoje as hojeSP, lerValor, moeda, nomeMes } from './format.js';
 import { faturaDaCompra, somarMeses, dataNoMes, resumoMes } from './calc.js';
 import { nomeDoLink, linkWhatsApp } from './links.js';
@@ -26,6 +26,7 @@ export function criarRotina(api) {
     cobrar: (id) => rt.folhaCobrar(achar('a_receber', id)),
     recebi: (id) => rt.folhaRecebi(achar('a_receber', id), ctx()),
     'editar-config': () => rt.folhaConfig(ctx()),
+    'trocar-senha': () => rt.folhaSenha(),
     'nova-conta-fixa': () => rt.folhaContaFixa(null, ctx()),
     'editar-conta-fixa': (id) => rt.folhaContaFixa(achar('contas_fixas', id), ctx()),
     'novo-limite': () => rt.folhaLimite(null, ctx()),
@@ -134,8 +135,24 @@ export function criarRotina(api) {
       const campos = {
         salario, dia_salario: dia('dia_salario'), cartao_fecha_dia: dia('cartao_fecha_dia'), cartao_vence_dia: dia('cartao_vence_dia'),
       };
+      if (f.banco) campos.banco = f.banco.value.trim().slice(0, 30) || 'C6';
+      if (f.regras_de_ouro) campos.regras_de_ouro = f.regras_de_ouro.value.trim() || null;
       estado.dados.config = await atualizar('config', estado.dados.config.id, campos);
       return 'Configuração salva.';
+    },
+
+    async 'form-senha'(f) {
+      const nova = f.nova.value;
+      if (nova.length < 8) throw new Aviso('A senha precisa de pelo menos 8 letras ou números.');
+      if (nova !== f.repetida.value) throw new Aviso('As duas senhas não são iguais.');
+      try {
+        await trocarSenha(nova);
+      } catch (e) {
+        if (e?.code === 'same_password') throw new Aviso('Essa já é a sua senha. Escolhe outra.');
+        if (e?.code === 'weak_password') throw new Aviso('Senha fraca. Mistura letras e números.');
+        throw e;
+      }
+      return 'Senha trocada.';
     },
 
     async 'form-conta-fixa'(f, form) {

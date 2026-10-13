@@ -84,6 +84,16 @@ Peças:
 - Segredo da função `ANTHROPIC_API_KEY` (console.anthropic.com > API Keys). Ponha um limite de gasto mensal no Console.
 - Custo: centavos por uso; uns US$ 1,50 por mês com uso diário.
 
+## Mais de uma pessoa
+
+Cada pessoa tem o próprio login e só vê os próprios dados (RLS: `user_id = auth.uid()`). Os cadastros abertos ficam desligados; o dono do projeto cria o acesso.
+
+1. Rodar uma vez `supabase/multiusuario.sql` no SQL Editor (banco e regras de ouro de cada um).
+2. Supabase > Authentication > Users > **Add user > Create new user**: e-mail da pessoa, uma senha provisória e **Auto Confirm User** marcado.
+3. A pessoa abre o site no iPhone, adiciona à tela de início, entra e preenche o **Começar** em Mais (salário, dia, banco, dias do cartão). Depois troca a senha em Mais.
+
+O dono do Supabase consegue ver os dados de todos pelo painel. A IA de todos usa a mesma chave da Anthropic.
+
 ## Backup
 
 No app, vá em **Mais > Backup**:

@@ -11,7 +11,7 @@ import {
   saldoEsperado, somarMeses, detalheFatura, itensDaFatura, resumoDivida,
   mesSemPlano, itensDaVirada, limitesDaVirada,
 } from './calc.js';
-import { montarDados } from './importar.js';
+import { montarDados, comecoDoZero } from './importar.js';
 import { lerFila, guardarNaFila, tirarDaFila, semInternet } from './fila.js';
 import * as telas from './telas.js';
 import * as telasRotina from './telas-rotina.js';
@@ -404,8 +404,51 @@ conteudo.addEventListener('submit', async (e) => {
   if (e.target.id === 'form-conferir') {
     e.preventDefault();
     await conferirSaldo(e.target);
+  } else if (e.target.id === 'form-comecar') {
+    e.preventDefault();
+    await comecar(e.target);
   }
 });
+
+// Conta nova: grava as categorias padrão, a Reserva e a configuração (por último: é ela que diz que começou)
+async function comecar(form) {
+  const f = form.elements;
+  const erro = form.querySelector('.erro');
+  erro.textContent = '';
+  let linhas;
+  try {
+    linhas = comecoDoZero({
+      salario: lerValor(f.salario.value),
+      diaSalario: Number(f.dia_salario.value),
+      fecha: Number(f.cartao_fecha_dia.value),
+      vence: Number(f.cartao_vence_dia.value),
+      banco: f.banco.value,
+    }, hojeSP(), estado.dados);
+  } catch (e) {
+    erro.textContent = e.message;
+    return;
+  }
+  try {
+    await ocupado(form.querySelector('[type=submit]'), 'Começando...', async () => {
+      if (linhas.categorias.length) await inserir('categorias', linhas.categorias);
+      if (linhas.caixinhas.length) await inserir('caixinhas', linhas.caixinhas);
+      try {
+        await inserir('config', [linhas.config]);
+      } catch (e) {
+        // Supabase ainda sem a coluna do banco (falta rodar o multiusuario.sql): grava sem ela
+        if (e?.code !== 'PGRST204' && e?.code !== '42703') throw e;
+        const { banco, ...semBanco } = linhas.config;
+        await inserir('config', [semBanco]);
+      }
+    });
+    await carregar();
+    location.hash = '#hoje';
+    avisar('Pronto! Agora confere o saldo do banco em Mais.');
+  } catch (e) {
+    console.warn(e);
+    erro.textContent = ERRO_REDE;
+  }
+}
 
 conteudo.addEventListener('change', async (e) => {
   if (e.target.name === 'tema') { mudarTema(e.target.value); return; }
@@ -775,7 +818,7 @@ async function pagarFatura(faturaMes, valor, data) {
   const quando = dataCurta(f.vence);
   const novos = [{
     cliente_id: crypto.randomUUID(), data, valor, tipo: 'pagamento_fatura', fatura_mes: faturaMes,
-    descricao: `Fatura C6 de ${quando}`,
+    descricao: `Fatura ${telas.nomeBanco(estado.dados)} de ${quando}`,
   }];
   const diferenca = f.total - valor; // banco cobrou mais: diferença negativa, o Livre cai
   if (diferenca !== 0) {

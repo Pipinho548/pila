@@ -821,6 +821,8 @@ details[open].cartao > summary { margin-bottom: 6px; }
 .ia-print { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding-inline: 18px; }
 .ia-print svg { width: 20px; height: 20px; flex: none; }
 .ia-manual { margin-top: 14px; }
+#form-comecar { margin-top: 14px; }
+#form-comecar + details { margin-top: 6px; }
 
 /* Extrato do C6: cada linha tem a marquinha, o texto, o valor e (se for gasto) a categoria */
 .ext-lista > li { padding: 12px 0; }

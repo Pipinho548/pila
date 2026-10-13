@@ -100,6 +100,11 @@ export async function apagarInscricao(endpoint) {
 }
 
 // Pede pra função do Supabase mandar um aviso de teste pros aparelhos desta conta
+export async function trocarSenha(nova) {
+  const { error } = await supabase.auth.updateUser({ password: nova });
+  if (error) throw error;
+}
+
 // Lançar por frase ou print: a função "ia" lê e devolve a lista pra conferir
 export async function lerComIA(pedido) {
   const { data, error } = await supabase.functions.invoke('ia', { body: pedido });

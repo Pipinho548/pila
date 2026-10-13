@@ -2,9 +2,16 @@
 import { moeda, dataBR, dataCurta, nomeMes, mesDe, esc, valorParaTexto, FUSO } from './format.js';
 import * as calc from './calc.js';
 import { lojaDoLink, mensagemCobranca } from './links.js';
+import { regrasDeOuro } from './importar.js';
 import {
-  MEIOS, neg, avisoOffline, carregando, cartaoImportar,
+  MEIOS, neg, avisoOffline, carregando, cartaoImportar, nomeBanco,
 } from './telas.js';
+
+// Regra de ouro sobre parcelado, se a pessoa escreveu uma
+function avisoParcelado(dados) {
+  const regra = regrasDeOuro(dados.config).find((r) => /parcel/i.test(r));
+  return regra ? `<p class="nota aviso-cartao">Regra de ouro: ${esc(regra)}</p>` : '';
+}
 
 const fechar = '<button type="button" class="btn-fechar" data-fechar aria-label="Fechar">✕</button>';
 const titulo = (texto) => `<div class="folha-topo"><h2 tabindex="-1" autofocus>${esc(texto)}</h2>${fechar}</div>`;
@@ -54,7 +61,7 @@ function cartaoDesejo(d, ctx) {
       ${d.observacao ? `<p class="mini obs">${esc(d.observacao)}</p>` : ''}
       ${s.esfriando ? `<p class="nota">Esfriando até ${quandoLibera(s.liberaEm)}. Se ainda quiser depois disso, libera o "Comprei".</p>` : ''}
       ${situacao}
-      ${d.parcelado ? '<p class="nota aviso-cartao">Regra de ouro: nada parcelado novo até março/2027.</p>' : ''}
+      ${d.parcelado ? avisoParcelado(dados) : ''}
       <div class="botoes-lado">
         <button type="button" class="btn-primario" data-acao="comprei" data-id="${d.id}"${s.esfriando ? ' disabled' : ''}>Comprei</button>
         <button type="button" class="btn-secundario" data-acao="editar-desejo" data-id="${d.id}">Editar</button>
@@ -113,7 +120,7 @@ export function folhaComprei(d, ctx) {
   const { dados } = ctx;
   return `${titulo(`Comprei: ${d.nome}`)}
     <p class="sub">No Pix, débito ou dinheiro sai do seu Livre. No cartão vai pra fatura.</p>
-    ${d.parcelado ? '<p class="nota aviso-cartao">Regra de ouro: nada parcelado novo até março/2027.</p>' : ''}
+    ${d.parcelado ? avisoParcelado(dados) : ''}
     <form id="form-comprei" class="form" data-id="${d.id}">
       <label class="campo">Quanto pagou <input name="valor" inputmode="decimal" autocomplete="off" required value="${d.preco != null ? valorParaTexto(d.preco) : ''}"></label>
       <label class="campo">Categoria <select name="categoria" required>${opcoesCategoria(dados, null, 'Escolhe')}</select></label>
@@ -276,6 +283,10 @@ export function folhaConfig(ctx) {
       ${numero('cartao_fecha_dia', 'Dia que o cartão fecha', c.cartao_fecha_dia)}
       ${numero('cartao_vence_dia', 'Dia que a fatura vence', c.cartao_vence_dia)}
       <p class="mini">Mudar o fechamento do cartão não muda a fatura de compras que já foram lançadas.</p>
+      ${'banco' in c ? `<label class="campo">Banco da sua conta principal <input name="banco" autocomplete="off" required value="${esc(c.banco ?? '')}"></label>` : ''}
+      ${'regras_de_ouro' in c ? `<label class="campo">Regras de ouro (uma por linha)
+        <textarea name="regras_de_ouro" rows="5" autocomplete="off" placeholder="Salário caiu: paga primeiro as contas">${esc(c.regras_de_ouro ?? '')}</textarea>
+      </label>` : ''}
       <button type="submit" class="btn-primario">Salvar</button>
       <p class="erro" role="alert"></p>
     </form>`;
@@ -359,10 +370,10 @@ export function telaComo() {
     ['Livre do mês', 'É o que sobra pra gastar no mês: salário que já caiu, menos todas as contas do plano (pagas ou não), menos os gastos do dia a dia. Dinheiro que ainda não caiu não existe.'],
     ['Ainda dá hoje', 'O Livre do começo do dia dividido pelos dias que faltam, contando hoje. Menos o que você já gastou hoje. Se ficar vermelho, tudo bem: os próximos dias ficam um pouco menores.'],
     ['Daqui pra frente', 'O Livre de agora dividido pelos dias que faltam a partir de amanhã. Sempre arredondado pra baixo.'],
-    ['Cartão', 'Toda compra no cartão vai pra fatura e entra no plano do mês em que a fatura vence: Uber e compras juntos na conta "Fatura C6", assinaturas (Claude, Google) como conta própria. Não mexe no Livre do mês da compra. A tela do cartão mostra quanto a fatura já tem.'],
+    ['Cartão', 'Toda compra no cartão vai pra fatura e entra no plano do mês em que a fatura vence: Uber e compras juntos na conta da fatura, assinaturas como conta própria. Não mexe no Livre do mês da compra. A tela do cartão mostra quanto a fatura já tem.'],
     ['Fatura', 'O cartão fecha dia 3 e vence dia 10. Pagar a fatura não é gasto novo: cada parte já foi descontada antes. Se o banco cobrar diferente, a diferença vira um ajuste.'],
     ['Reserva (CDB)', 'Fica fora do saldo da conta. Guardar sai do Livre; resgatar volta pro Livre. Ela também é a garantia do limite do cartão.'],
-    ['Conferir saldo', 'Você digita o saldo do C6 e o app compara com o esperado: último saldo conferido mais o que entrou menos o que saiu da conta. Cartão e dinheiro vivo não contam.'],
+    ['Conferir saldo', 'Você digita o saldo do banco e o app compara com o esperado: último saldo conferido mais o que entrou menos o que saiu da conta. Cartão e dinheiro vivo não contam.'],
     ['Virada do mês', 'No dia 1 o app monta o plano novo: contas fixas ativas, parcelas do mês, assinaturas e Uber da fatura, e o CDB. Quando o salário cair, toca em "Salário caiu".'],
     ['Fechar o mês', 'No mês seguinte o app pergunta o que fazer com a sobra: mandar pra Reserva ou levar pro mês novo.'],
     ['Comprar', 'Tudo que você quer comprar espera 2 dias antes de liberar o "Comprei". O app mostra se cabe no Livre agora ou em que mês cabe.'],
@@ -436,7 +447,7 @@ export function folhaExtrato(a, ctx) {
       : `O app esperava ${num(a.saldo.esperado)}, diferença de ${num(Math.abs(diferenca))}. ${novas.length ? 'Lançar o que falta deve resolver. Se não resolver, ajusta' : 'Ajusta'} em Conferir saldo.`}</p>`;
   }
 
-  return `${titulo('Extrato do C6')}
+  return `${titulo(`Extrato do ${nomeBanco(ctx.dados)}`)}
     <p class="sub">${a.de ? `De ${dataCurta(a.de)} a ${dataCurta(a.ate)}, ${a.linhas.length} transações` : 'Sem transações'}</p>
     ${saldo}
     <div class="cartao-topo bloco-topo"><h3>Falta lançar</h3><p class="mini">${novas.length}</p></div>
@@ -523,4 +534,17 @@ export function folhaIAResultado(r, ctx) {
     </form>` : `
     <p class="vazio">Não achei nenhum lançamento aí.</p>
     <button type="button" class="btn-secundario largo" data-acao="ia-de-novo">Tentar de novo</button>`}`;
+}
+
+// ---------- Trocar senha ----------
+
+export function folhaSenha() {
+  return `${titulo('Trocar senha')}
+    <form id="form-senha" class="form">
+      <label class="campo">Senha nova <input name="nova" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label class="campo">Repete a senha nova <input name="repetida" type="password" autocomplete="new-password" minlength="8" required></label>
+      <p class="mini">Pelo menos 8 letras ou números.</p>
+      <button type="submit" class="btn-primario">Trocar</button>
+      <p class="erro" role="alert"></p>
+    </form>`;
 }

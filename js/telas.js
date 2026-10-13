@@ -1,16 +1,12 @@
 // O que aparece em cada tela. Só monta HTML: quem reage aos toques é o app.js.
 import { moeda, menos, dataBR, dataCurta, nomeMes, mesDe, esc, valorParaTexto } from './format.js';
 import * as calc from './calc.js';
+import { regrasDeOuro } from './importar.js';
 
 export const MEIOS = { pix: 'Pix', debito: 'Débito', cartao: 'Cartão', boleto: 'Boleto', dinheiro: 'Dinheiro' };
 
-const REGRAS_DE_OURO = [
-  'Salário caiu: paga primeiro contas e parcelas. O que sobrar é seu.',
-  'Cartão só pra Uber, assinatura e o que só dá pra pagar no cartão.',
-  'Nada parcelado novo até março/2027.',
-  'Dinheiro que ainda não caiu não existe.',
-  'Viu algo legal? Vai pra lista de compras e espera 2 dias.',
-];
+// Nome do banco de cada um (em Configurações)
+export const nomeBanco = (dados) => dados?.config?.banco || 'C6';
 
 export const neg = (v) => (v < 0 ? ' negativo' : '');
 
@@ -130,7 +126,7 @@ export function cartaoImportar() {
   return `
     <section class="cartao">
       <h2>Bora começar</h2>
-      <p class="vazio">Ainda não tem dados aqui. Vai em <a href="#mais">Mais</a> e toca em <b>Importar dados iniciais</b>.</p>
+      <p class="vazio">Ainda não tem dados aqui. Vai em <a href="#mais">Mais</a> e preenche o <b>Começar</b>.</p>
     </section>`;
 }
 
@@ -352,13 +348,13 @@ export function telaHoje(ctx) {
 
     <div class="grade-w">
       ${blocoPequeno({
-        href: '#conferir', nome: 'conta', rotulo: 'Na conta C6',
+        href: '#conferir', nome: 'conta', rotulo: `Na conta ${nomeBanco(dados)}`,
         valor: conta ? moeda(conta.esperado) : 'Conferir',
         sub: conta ? `conferido em ${dataCurta(conta.base.data)}` : 'digita o saldo do banco',
       })}
       ${reserva ? blocoPequeno({
         href: '#caixinhas', nome: 'reserva', rotulo: 'Reserva', classe: 'brilho-erva',
-        valor: moeda(calc.saldoCaixinha(reserva, dados.lancamentos)), valorClasse: 'positivo', sub: 'guardado no CDB',
+        valor: moeda(calc.saldoCaixinha(reserva, dados.lancamentos)), valorClasse: 'positivo', sub: 'guardado',
       }) : ''}
     </div>
 
@@ -683,7 +679,7 @@ export function telaConferir(ctx) {
     <header class="cabecalho">
       <a href="#mais" class="voltar">‹ Mais</a>
       <h1>Conferir saldo</h1>
-      <p class="sub">Confere se o app bate com a conta C6.</p>
+      <p class="sub">Confere se o app bate com a conta ${nomeBanco(dados)}.</p>
     </header>${avisoOffline(ctx)}`;
   if (!dados) return topo + carregando(ctx);
   if (!dados.config) return topo + cartaoImportar();
@@ -722,7 +718,7 @@ export function telaConferir(ctx) {
     </section>` : '<section class="cartao"><p class="vazio">Ainda não tem saldo conferido. O primeiro que você digitar vira o ponto de partida.</p></section>'}
 
     <form id="form-conferir" class="cartao form">
-      <label class="campo">Quanto tem na conta C6 agora?
+      <label class="campo">Quanto tem na conta ${nomeBanco(dados)} agora?
         <input name="saldo" inputmode="decimal" autocomplete="off" placeholder="0,00" required>
       </label>
       <button type="submit" class="btn-primario">Conferir</button>
@@ -881,7 +877,7 @@ export function telaFatura(ctx) {
   const topo = `
     <header class="cabecalho">
       <a href="#hoje" class="voltar">‹ Hoje</a>
-      <h1>Cartão C6</h1>
+      <h1>Cartão ${nomeBanco(dados)}</h1>
       ${dados?.config ? `<p class="sub">Fecha dia ${dados.config.cartao_fecha_dia} e vence dia ${dados.config.cartao_vence_dia}</p>` : ''}
     </header>${avisoOffline(ctx)}`;
   if (!dados) return topo + carregando(ctx);
@@ -961,8 +957,8 @@ export function folhaCaixinha(caixinha, tipo, ctx) {
   return `
     <div class="folha-topo"><h2 tabindex="-1" autofocus>${guardar ? 'Guardar' : 'Resgatar'}: ${esc(caixinha.nome)}</h2><button type="button" class="btn-fechar" data-fechar aria-label="Fechar">✕</button></div>
     <p class="sub">${guardar
-      ? 'Sai da conta C6 e do seu Livre do mês. (A conta "Guardar no CDB" do plano você marca na aba Mês.)'
-      : 'Volta pra conta C6 e entra no seu Livre do mês.'}</p>
+      ? `Sai da conta ${nomeBanco(ctx.dados)} e do seu Livre do mês. (Se tiver a conta de guardar no plano, você marca ela na aba Mês.)`
+      : `Volta pra conta ${nomeBanco(ctx.dados)} e entra no seu Livre do mês.`}</p>
     <form id="form-caixinha" class="form" data-id="${caixinha.id}" data-tipo="${tipo}">
       <label class="campo">Valor <input name="valor" inputmode="decimal" autocomplete="off" placeholder="0,00" required></label>
       <label class="campo">Descrição <input name="descricao" autocomplete="off" placeholder="opcional"></label>
@@ -1030,13 +1026,28 @@ export function telaMais(ctx) {
   const aReceber = dados ? calc.soma(dados.a_receber.filter((r) => !r.recebido_em)) : 0;
   const importar = dados && !dados.config ? `
     <section class="cartao">
-      <h2>Importar dados iniciais</h2>
-      <p class="vazio">Escolhe o arquivo <b>dados-iniciais.json</b>. Faz isso uma vez só. Os dados vão direto pro seu Supabase.</p>
-      <label class="btn-primario largo arquivo">Escolher arquivo
-        <input type="file" id="arquivo-importar" accept=".json,application/json">
-      </label>
-      <p class="erro" id="erro-importar" role="alert"></p>
+      <h2>Começar</h2>
+      <p class="mini">Só o básico. Contas fixas, dívidas e o resto você coloca depois, em Configurações.</p>
+      <form id="form-comecar" class="form">
+        <label class="campo">Salário (por mês) <input name="salario" inputmode="decimal" autocomplete="off" placeholder="0,00" required></label>
+        <label class="campo">Dia que o salário cai <input name="dia_salario" type="number" inputmode="numeric" min="1" max="31" required></label>
+        <label class="campo">Banco da sua conta principal <input name="banco" autocomplete="off" placeholder="Ex.: C6, Nubank, Itaú" required></label>
+        <label class="campo">Dia que o cartão fecha <input name="cartao_fecha_dia" type="number" inputmode="numeric" min="1" max="31" required></label>
+        <label class="campo">Dia que a fatura vence <input name="cartao_vence_dia" type="number" inputmode="numeric" min="1" max="31" required></label>
+        <button type="submit" class="btn-primario">Começar</button>
+        <p class="erro" role="alert"></p>
+      </form>
+      <details>
+        <summary>Tenho um arquivo de dados</summary>
+        <p class="mini">Escolhe o arquivo <b>dados-iniciais.json</b>. Faz isso uma vez só.</p>
+        <label class="btn-secundario largo arquivo">Escolher arquivo
+          <input type="file" id="arquivo-importar" accept=".json,application/json">
+        </label>
+        <p class="erro" id="erro-importar" role="alert"></p>
+      </details>
     </section>` : '';
+  const banco = nomeBanco(dados);
+  const regras = regrasDeOuro(dados?.config);
 
   return `
     <header class="cabecalho">
@@ -1052,8 +1063,10 @@ export function telaMais(ctx) {
     </nav>
     ${dados?.config ? `
     <section class="cartao">
-      <h2>Extrato do C6</h2>
-      <p class="mini">No app do C6, exporta o extrato em PDF e escolhe o arquivo aqui. O Pila mostra o que ainda falta lançar. O arquivo é lido aqui no celular e não fica guardado.</p>
+      <h2>Extrato do ${esc(banco)}</h2>
+      <p class="mini">${banco === 'C6'
+        ? 'No app do C6, exporta o extrato em PDF e escolhe o arquivo aqui.'
+        : 'No app do seu banco, exporta o extrato em OFX e escolhe o arquivo aqui. (PDF só do C6.)'} O Pila mostra o que ainda falta lançar. O arquivo é lido aqui no celular e não fica guardado.</p>
       <label class="btn-secundario largo arquivo">Escolher extrato
         <input type="file" id="arquivo-extrato" accept=".pdf,.ofx,application/pdf,application/octet-stream,text/plain">
       </label>
@@ -1069,10 +1082,13 @@ export function telaMais(ctx) {
       </fieldset>
       <p class="mini">Automático segue o modo do iPhone.</p>
     </section>
+    ${dados?.config ? `
     <section class="cartao">
       <h2>Regras de ouro</h2>
-      <ol class="regras">${REGRAS_DE_OURO.map((r) => `<li>${r}</li>`).join('')}</ol>
-    </section>
+      ${regras.length
+        ? `<ol class="regras">${regras.map((r) => `<li>${esc(r)}</li>`).join('')}</ol>`
+        : '<p class="vazio">Escreve as suas em Configurações. Ex.: "Salário caiu: paga primeiro as contas".</p>'}
+    </section>` : ''}
     ${dados?.config ? `
     <section class="cartao">
       <h2>Backup</h2>
@@ -1083,6 +1099,9 @@ export function telaMais(ctx) {
       </div>
     </section>` : ''}
     <section class="cartao">
-      <button type="button" class="btn-secundario" data-acao="sair">Sair</button>
+      <div class="botoes-lado">
+        <button type="button" class="btn-secundario" data-acao="trocar-senha">Trocar senha</button>
+        <button type="button" class="btn-secundario" data-acao="sair">Sair</button>
+      </div>
     </section>`;
 }
