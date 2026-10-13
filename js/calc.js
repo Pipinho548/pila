@@ -158,10 +158,10 @@ export function valorItem(item, dados, hoje) {
   if (item.valor_real != null) return item.valor_real;
   if (item.tipo === 'fatura_uber' && item.fatura_mes && dados.config) {
     const { cartao_fecha_dia: fecha, cartao_vence_dia: vence } = dados.config;
-    const usado = comprasDaFatura(dados.lancamentos, item.fatura_mes);
-    // Fatura aberta: vale o maior entre o previsto e o já usado. Fechou: vale o real.
-    const fechou = hoje > fechamentoDaFatura(item.fatura_mes, fecha, vence);
-    return fechou ? usado : Math.max(item.valor_previsto, usado);
+    // Fatura que já está recebendo compras (ou já fechou): vale o que tem nela, igual ao banco.
+    // Fatura que ainda nem começou: vale o previsto.
+    const comecou = faturaDaCompra(hoje, fecha, vence) >= item.fatura_mes;
+    return comecou ? comprasDaFatura(dados.lancamentos, item.fatura_mes) : item.valor_previsto;
   }
   return item.valor_previsto;
 }

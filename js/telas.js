@@ -441,8 +441,11 @@ function linhaItem(item, dados, hoje) {
   if (item.pago && item.pago_em) detalhes.push(`pago ${dataCurta(item.pago_em)}`);
   else if (item.vencimento) detalhes.push(`vence ${dataCurta(item.vencimento)}`);
   if (NOMES_TIPO[item.tipo]) detalhes.push(NOMES_TIPO[item.tipo]);
-  if (item.tipo === 'fatura_uber' && item.fatura_mes) {
-    detalhes.push(`usado ${moeda(calc.comprasDaFatura(dados.lancamentos, item.fatura_mes))}`);
+  if (item.tipo === 'fatura_uber' && item.fatura_mes && dados.config) {
+    // Fatura que já começou vale o que tem nela; a que nem começou, o previsto
+    const { cartao_fecha_dia: fecha, cartao_vence_dia: vence } = dados.config;
+    const comecou = calc.faturaDaCompra(hoje, fecha, vence) >= item.fatura_mes;
+    if (!item.pago) detalhes.push(comecou ? 'até agora' : 'previsto');
   } else if (item.valor_real == null && !item.pago) {
     detalhes.push('previsto');
   }

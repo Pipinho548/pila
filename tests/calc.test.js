@@ -81,7 +81,7 @@ test('Livre = entradas que caíram - plano - gastos do dia a dia - depósitos + 
   assert.equal(m.salarioCaiu, true);
 });
 
-test('conta "Fatura C6" no plano: Uber e compras, maior entre previsto e usado; quando fecha, vale o real', () => {
+test('conta "Fatura C6" no plano: fatura que já começou vale o que tem nela; a que nem começou vale o previsto', () => {
   const d = base();
   const item = { mes: '2026-12', tipo: 'fatura_uber', valor_previsto: 30000, valor_real: null, fatura_mes: '2026-12' };
   d.lancamentos.push(
@@ -90,8 +90,9 @@ test('conta "Fatura C6" no plano: Uber e compras, maior entre previsto e usado; 
   );
   assert.equal(corridasUber(d.lancamentos, '2026-12'), 1200);
   assert.equal(comprasDaFatura(d.lancamentos, '2026-12'), 2190);
-  assert.equal(valorItem(item, d, '2026-11-20'), 30000);
-  assert.equal(valorItem(item, d, '2026-12-04'), 2190);
+  assert.equal(valorItem(item, d, '2026-11-02'), 30000); // fatura de dezembro ainda não começou (fecha dia 3)
+  assert.equal(valorItem(item, d, '2026-11-20'), 2190);  // aberta: o que já tem
+  assert.equal(valorItem(item, d, '2026-12-04'), 2190);  // fechada
   d.lancamentos.push(lanc({ data: '2026-11-25', valor: 40000, meio: 'cartao', regra_cartao: 'uber', fatura_mes: '2026-12' }));
   assert.equal(valorItem(item, d, '2026-11-26'), 42190);
 });
