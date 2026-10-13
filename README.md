@@ -51,7 +51,7 @@ Em 1 ou 2 minutos o site atualiza. Se mudou arquivo do app, aumente `VERSAO` no 
 O repositório é público. Nenhum dado financeiro fica no código: tudo vive no Supabase, protegido por login e RLS.
 A pasta `privado/`, o `dados-iniciais.json` e qualquer backup estão no `.gitignore`.
 
-## Avisos de vencimento (iPhone)
+## Aviso das 9h (iPhone)
 
 Todo dia às 9h chega uma notificação com quanto dá pra gastar hoje e por dia (a mesma conta da tela Hoje) e as contas vencendo hoje ou amanhã. Funciona no iPhone com iOS 16.4 ou mais novo, com o Pila aberto pelo ícone da tela inicial.
 
