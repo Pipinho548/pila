@@ -105,7 +105,7 @@ export function folhaLancamento(l, ctx) {
         <p class="mini">No cartão, conta como</p>
         <fieldset class="segmentado">
           <legend>Conta como</legend>
-          <label><input type="radio" name="regra" value="outra"${l.regra_cartao !== 'assinatura' ? ' checked' : ''}><span>Gasto de agora</span></label>
+          <label><input type="radio" name="regra" value="outra"${l.regra_cartao !== 'assinatura' ? ' checked' : ''}><span>Compra</span></label>
           <label><input type="radio" name="regra" value="assinatura"${l.regra_cartao === 'assinatura' ? ' checked' : ''}><span>Assinatura</span></label>
         </fieldset>
         ${l.regra_cartao === 'assinatura' && l.fatura_mes ? `<p class="mini">Entra no plano de ${esc(nomeMes(l.fatura_mes))}, não no Livre do mês da compra.</p>` : ''}
@@ -442,7 +442,7 @@ function linhaItem(item, dados, hoje) {
   else if (item.vencimento) detalhes.push(`vence ${dataCurta(item.vencimento)}`);
   if (NOMES_TIPO[item.tipo]) detalhes.push(NOMES_TIPO[item.tipo]);
   if (item.tipo === 'fatura_uber' && item.fatura_mes) {
-    detalhes.push(`usado ${moeda(calc.corridasUber(dados.lancamentos, item.fatura_mes))}`);
+    detalhes.push(`usado ${moeda(calc.comprasDaFatura(dados.lancamentos, item.fatura_mes))}`);
   } else if (item.valor_real == null && !item.pago) {
     detalhes.push('previsto');
   }
@@ -826,9 +826,8 @@ function deOndeSai(f) {
   const nomeDoMes = nomeMes(f.mes);
   const linhas = [
     ['Compras antigas', f.origem.antigas, `no plano de ${nomeDoMes}`],
-    ['Uber', f.origem.uber, `no plano de ${nomeDoMes}`],
+    ['Uber e compras', f.origem.compras, `no plano de ${nomeDoMes}`],
     ['Assinaturas', f.origem.assinaturas, `no plano de ${nomeDoMes}`],
-    ['Outras compras', f.origem.reservado, 'Reservado pra fatura'],
   ].filter(([, valor]) => valor > 0);
   if (!linhas.length) return '<p class="vazio">Nenhuma compra nessa fatura.</p>';
   return `<dl class="resumo">${linhas.map(([nome, valor, onde]) => `
@@ -892,15 +891,10 @@ export function telaFatura(ctx) {
     .sort(maisRecentes)
     .slice(0, 3)
     .map((l) => calc.detalheFatura(dados, l.fatura_mes, hoje));
-  const reservado = calc.reservadoFatura(dados.lancamentos);
 
   return `${topo}
     ${paraPagar.map((f) => cartaoFatura(f, ctx)).join('')}
     ${cartaoFatura(aberta, ctx)}
-    <section class="cartao linha-unica">
-      <span>Reservado pra fatura<br><span class="mini">compras fora da regra, já tiradas do Livre</span></span>
-      <span class="num forte">${moeda(reservado)}</span>
-    </section>
     ${pagas.length ? `
     <details class="cartao">
       <summary><h2>Pagas</h2></summary>

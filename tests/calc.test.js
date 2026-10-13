@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   diasNoMes, somarMeses, dataNoMes, somarDias, faturaDaCompra, fechamentoDaFatura,
-  resumoCartao, reservadoFatura, corridasUber, valorItem, resumoMes, quantoPossoGastar,
+  resumoCartao, comprasDaFatura, corridasUber, valorItem, resumoMes, quantoPossoGastar,
   gastosDoDia, situacaoLimites, saldoCaixinha, efeitoNaConta, saldoEsperado, corDoLimite,
   detalheFatura, faturasParaPagar, totalDevo, linhaDoTempo, planoDoMes, projecao,
 } from '../js/calc.js';
@@ -65,7 +65,7 @@ test('Livre = entradas que caíram - plano - gastos do dia a dia - depósitos + 
     lanc({ data: '2026-11-06', valor: 8000, item_mes_id: 'i2' }),                     // conta paga: conta pelo item
     lanc({ data: '2026-11-07', valor: 4550, categoria_id: 'c-mercado' }),
     lanc({ data: '2026-11-07', valor: 2000, meio: 'cartao', regra_cartao: 'uber' }),  // vai pra fatura
-    lanc({ data: '2026-11-08', valor: 1000, meio: 'cartao', regra_cartao: 'outra' }), // sai do Livre na hora
+    lanc({ data: '2026-11-08', valor: 1000, meio: 'cartao', regra_cartao: 'outra' }), // também vai pra fatura
     lanc({ data: '2026-11-01', valor: 5000, antes_do_app: true, meio: 'cartao', regra_cartao: 'outra' }),
     lanc({ data: '2026-11-09', tipo: 'deposito_caixinha', valor: 20000, meio: null }),
     lanc({ data: '2026-11-09', tipo: 'ajuste', valor: -150 }),
@@ -73,35 +73,58 @@ test('Livre = entradas que caíram - plano - gastos do dia a dia - depósitos + 
   const m = resumoMes(d, '2026-11', '2026-11-10');
   assert.equal(m.entradas, 300000);
   assert.equal(m.plano, 108000);
-  assert.equal(m.gastos, 5550);
+  assert.equal(m.gastos, 4550);
   assert.equal(m.depositos, 20000);
-  assert.equal(m.livre, 300000 - 108000 - 5550 - 20000 - 150);
+  assert.equal(m.livre, 300000 - 108000 - 4550 - 20000 - 150);
   assert.equal(m.faltaPagar, 100000);
   assert.equal(m.proxima.nome, 'Aluguel');
   assert.equal(m.salarioCaiu, true);
 });
 
-test('fatura do Uber no plano: maior entre previsto e usado; quando fecha, vale o real', () => {
+test('conta "Fatura C6" no plano: Uber e compras, maior entre previsto e usado; quando fecha, vale o real', () => {
   const d = base();
   const item = { mes: '2026-12', tipo: 'fatura_uber', valor_previsto: 30000, valor_real: null, fatura_mes: '2026-12' };
-  d.lancamentos.push(lanc({ data: '2026-11-10', valor: 1200, meio: 'cartao', regra_cartao: 'uber', fatura_mes: '2026-12' }));
+  d.lancamentos.push(
+    lanc({ data: '2026-11-10', valor: 1200, meio: 'cartao', regra_cartao: 'uber', fatura_mes: '2026-12' }),
+    lanc({ data: '2026-11-12', valor: 990, meio: 'cartao', regra_cartao: 'outra', fatura_mes: '2026-12' }),
+  );
   assert.equal(corridasUber(d.lancamentos, '2026-12'), 1200);
+  assert.equal(comprasDaFatura(d.lancamentos, '2026-12'), 2190);
   assert.equal(valorItem(item, d, '2026-11-20'), 30000);
-  assert.equal(valorItem(item, d, '2026-12-04'), 1200);
+  assert.equal(valorItem(item, d, '2026-12-04'), 2190);
   d.lancamentos.push(lanc({ data: '2026-11-25', valor: 40000, meio: 'cartao', regra_cartao: 'uber', fatura_mes: '2026-12' }));
-  assert.equal(valorItem(item, d, '2026-11-26'), 41200);
+  assert.equal(valorItem(item, d, '2026-11-26'), 42190);
 });
 
-test('reservado pra fatura: só compras fora da regra de faturas não pagas', () => {
+test('compras da fatura: Uber e outras compras juntas; assinatura e compras antigas ficam fora', () => {
   const lancs = [
     lanc({ meio: 'cartao', regra_cartao: 'outra', valor: 1000, fatura_mes: '2026-11' }),
     lanc({ meio: 'cartao', regra_cartao: 'outra', valor: 500, fatura_mes: '2026-12' }),
     lanc({ meio: 'cartao', regra_cartao: 'uber', valor: 700, fatura_mes: '2026-12' }),
-    lanc({ meio: 'cartao', regra_cartao: 'outra', valor: 900, fatura_mes: '2026-11', antes_do_app: true }),
+    lanc({ meio: 'cartao', regra_cartao: 'assinatura', valor: 300, fatura_mes: '2026-12' }),
+    lanc({ meio: 'cartao', regra_cartao: 'outra', valor: 900, fatura_mes: '2026-12', antes_do_app: true }),
   ];
-  assert.equal(reservadoFatura(lancs), 1500);
-  lancs.push(lanc({ tipo: 'pagamento_fatura', valor: 1000, fatura_mes: '2026-11', meio: null }));
-  assert.equal(reservadoFatura(lancs), 500);
+  assert.equal(comprasDaFatura(lancs, '2026-12'), 1200);
+  assert.equal(comprasDaFatura(lancs, '2026-11'), 1000);
+});
+
+test('compra no cartão não sai do Livre do mês da compra; conta no mês da fatura', () => {
+  const d = base();
+  d.lancamentos.push(
+    lanc({ data: '2026-11-05', tipo: 'entrada', valor: 300000, descricao: 'Salário' }),
+    lanc({ data: '2026-11-08', valor: 2500, meio: 'cartao', regra_cartao: 'outra', fatura_mes: '2026-12' }),
+  );
+  assert.equal(resumoMes(d, '2026-11', '2026-11-10').livre, 300000);
+  assert.equal(gastosDoDia(d, '2026-11-08'), 0);
+  // Dezembro sem a conta "Fatura C6" no plano: a compra conta assim mesmo
+  const dez = resumoMes(d, '2026-12', '2026-12-05');
+  assert.equal(dez.cartaoSemConta, 2500);
+  assert.equal(dez.plano, 2500);
+  // Com a conta no plano, conta por ela (uma vez só)
+  d.itens_mes.push({ id: 'f', mes: '2026-12', tipo: 'fatura_uber', valor_previsto: 1000, valor_real: null, fatura_mes: '2026-12', pago: false });
+  const dez2 = resumoMes(d, '2026-12', '2026-12-05');
+  assert.equal(dez2.cartaoSemConta, 0);
+  assert.equal(dez2.plano, 2500);
 });
 
 test('quanto posso gastar: por dia arredondado pra baixo, ainda dá hoje pode ficar negativo', () => {
@@ -176,7 +199,7 @@ test('conferir saldo: cartão e dinheiro vivo não mexem na conta', () => {
   assert.equal(saldoEsperado(d).esperado, 50000 - 2000 + 10000);
 });
 
-test('fatura: separa o que está no plano do que está reservado; some quando é paga', () => {
+test('fatura: de onde sai cada parte (tudo pelo plano do mês da fatura); some quando é paga', () => {
   const d = base();
   d.itens_mes.push({ id: 'a1', mes: '2026-12', tipo: 'assinatura', valor_previsto: 5000, valor_real: null, fatura_mes: '2026-12' });
   d.lancamentos.push(
@@ -186,7 +209,7 @@ test('fatura: separa o que está no plano do que está reservado; some quando é
   );
   const f = detalheFatura(d, '2026-12', '2026-12-04');
   assert.equal(f.total, 9000);
-  assert.deepEqual(f.origem, { antigas: 0, uber: 1000, assinaturas: 5000, reservado: 3000 });
+  assert.deepEqual(f.origem, { antigas: 0, compras: 4000, assinaturas: 5000 });
   assert.equal(f.vence, '2026-12-10');
   assert.equal(f.fechada, true);
   assert.equal(detalheFatura(d, '2026-12', '2026-12-03').fechada, false);

@@ -75,15 +75,13 @@ export function corridasUber(lancamentos, faturaMes) {
     l.regra_cartao === 'uber' && !l.antes_do_app && l.fatura_mes === faturaMes));
 }
 
-const faturaPaga = (lancamentos, faturaMes) =>
-  lancamentos.some((l) => l.tipo === 'pagamento_fatura' && l.fatura_mes === faturaMes);
-
-// "Reservado pra fatura": compras no cartão fora da regra (nem Uber, nem assinatura)
-// de faturas ainda não pagas. O dinheiro continua na conta, mas já tem dono.
-export function reservadoFatura(lancamentos) {
+// Uber e as outras compras no cartão (menos assinatura e compras de antes do app) de uma fatura.
+// Elas entram juntas na conta "Fatura C6" do plano do mês em que a fatura vence:
+// não saem do Livre do mês da compra.
+export function comprasDaFatura(lancamentos, faturaMes) {
   return soma(lancamentos.filter((l) =>
-    l.meio === 'cartao' && l.regra_cartao === 'outra' && !l.antes_do_app
-    && !faturaPaga(lancamentos, l.fatura_mes)));
+    l.meio === 'cartao' && l.tipo === 'gasto' && !l.antes_do_app && l.fatura_mes === faturaMes
+    && (l.regra_cartao === 'uber' || l.regra_cartao === 'outra')));
 }
 
 const TIPOS_DA_FATURA = ['fatura_antiga', 'fatura_uber', 'assinatura'];
@@ -106,11 +104,10 @@ export function detalheFatura(dados, faturaMes, hoje) {
   porRegra.assinaturas += valorAssinaturas;
   porRegra.total += valorAssinaturas;
 
-  // De onde sai: o que já está no plano do mês e o que está "Reservado pra fatura"
+  // De onde sai: tudo vai pelo plano do mês em que a fatura vence
   const antigas = soma(compras.filter((l) => l.antes_do_app));
-  const uber = soma(novas.filter((l) => l.regra_cartao === 'uber'));
   const assinaturas = soma(novas.filter((l) => l.regra_cartao === 'assinatura')) + valorAssinaturas;
-  const reservado = soma(novas.filter((l) => l.regra_cartao === 'outra'));
+  const outras = comprasDaFatura(compras, faturaMes);
   const dataFecha = fechamentoDaFatura(faturaMes, fecha, vence);
 
   return {
@@ -121,7 +118,7 @@ export function detalheFatura(dados, faturaMes, hoje) {
     compras,
     itensAssinatura,
     ...porRegra,
-    origem: { antigas, uber, assinaturas, reservado },
+    origem: { antigas, compras: outras, assinaturas },
     pagamento: dados.lancamentos.find((l) => l.tipo === 'pagamento_fatura' && l.fatura_mes === faturaMes) ?? null,
   };
 }
@@ -151,11 +148,9 @@ export function itensDaFatura(dados, faturaMes) {
 // ---------- Plano do mês e Livre ----------
 
 // Gasto do dia a dia que desconta do Livre.
-// Fora: contas do plano (já contam pelo item), Uber e assinatura no cartão
-// (entram no plano do mês da fatura) e compras de antes do app.
+// Fora: contas do plano (já contam pelo item) e tudo no cartão (entra no plano do mês da fatura).
 export function contaNoLivre(l) {
-  return l.tipo === 'gasto' && !l.item_mes_id && !l.antes_do_app
-    && l.regra_cartao !== 'uber' && l.regra_cartao !== 'assinatura';
+  return l.tipo === 'gasto' && !l.item_mes_id && !l.antes_do_app && l.meio !== 'cartao';
 }
 
 // Quanto um item do plano vale agora.
@@ -163,7 +158,7 @@ export function valorItem(item, dados, hoje) {
   if (item.valor_real != null) return item.valor_real;
   if (item.tipo === 'fatura_uber' && item.fatura_mes && dados.config) {
     const { cartao_fecha_dia: fecha, cartao_vence_dia: vence } = dados.config;
-    const usado = corridasUber(dados.lancamentos, item.fatura_mes);
+    const usado = comprasDaFatura(dados.lancamentos, item.fatura_mes);
     // Fatura aberta: vale o maior entre o previsto e o já usado. Fechou: vale o real.
     const fechou = hoje > fechamentoDaFatura(item.fatura_mes, fecha, vence);
     return fechou ? usado : Math.max(item.valor_previsto, usado);
@@ -183,7 +178,10 @@ export function resumoMes(dados, mes, hoje) {
   const entradas = soma(doMes.filter((l) => l.tipo === 'entrada' && l.data <= hoje));
   // Resgate de caixinha pra usar no mês (não o que foi pra pagar fatura)
   const resgates = soma(doMes.filter((l) => l.tipo === 'resgate_caixinha' && !l.fatura_mes && l.data <= hoje));
-  const plano = soma(itens, valor);
+  // Compras no cartão contam pela conta "Fatura C6" do plano. Se o mês não tiver essa conta, contam assim mesmo.
+  const temContaDoCartao = itens.some((i) => i.tipo === 'fatura_uber' && i.fatura_mes === mes);
+  const cartaoSemConta = temContaDoCartao ? 0 : comprasDaFatura(dados.lancamentos, mes);
+  const plano = soma(itens, valor) + cartaoSemConta;
   const gastos = soma(doMes.filter(contaNoLivre));
   const depositos = soma(doMes.filter((l) => l.tipo === 'deposito_caixinha' && !l.item_mes_id));
   const ajustes = soma(doMes.filter((l) => l.tipo === 'ajuste'));
@@ -196,6 +194,7 @@ export function resumoMes(dados, mes, hoje) {
     entradas,
     resgates,
     plano,
+    cartaoSemConta,
     gastos,
     depositos,
     ajustes,

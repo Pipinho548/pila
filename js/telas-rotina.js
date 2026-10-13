@@ -112,7 +112,7 @@ export function folhaDesejo(d, ctx) {
 export function folhaComprei(d, ctx) {
   const { dados } = ctx;
   return `${titulo(`Comprei: ${d.nome}`)}
-    <p class="sub">Vira um gasto do dia a dia e sai do seu Livre.</p>
+    <p class="sub">No Pix, débito ou dinheiro sai do seu Livre. No cartão vai pra fatura.</p>
     ${d.parcelado ? '<p class="nota aviso-cartao">Regra de ouro: nada parcelado novo até março/2027.</p>' : ''}
     <form id="form-comprei" class="form" data-id="${d.id}">
       <label class="campo">Quanto pagou <input name="valor" inputmode="decimal" autocomplete="off" required value="${d.preco != null ? valorParaTexto(d.preco) : ''}"></label>
@@ -359,7 +359,7 @@ export function telaComo() {
     ['Livre do mês', 'É o que sobra pra gastar no mês: salário que já caiu, menos todas as contas do plano (pagas ou não), menos os gastos do dia a dia. Dinheiro que ainda não caiu não existe.'],
     ['Ainda dá hoje', 'O Livre do começo do dia dividido pelos dias que faltam, contando hoje. Menos o que você já gastou hoje. Se ficar vermelho, tudo bem: os próximos dias ficam um pouco menores.'],
     ['Daqui pra frente', 'O Livre de agora dividido pelos dias que faltam a partir de amanhã. Sempre arredondado pra baixo.'],
-    ['Cartão', 'Uber e assinaturas (Claude, Google) entram como conta no plano do mês em que a fatura vence. Qualquer outra compra no cartão sai do Livre na hora e fica em "Reservado pra fatura". Assim o cartão não esconde gasto.'],
+    ['Cartão', 'Toda compra no cartão vai pra fatura e entra no plano do mês em que a fatura vence: Uber e compras juntos na conta "Fatura C6", assinaturas (Claude, Google) como conta própria. Não mexe no Livre do mês da compra. A tela do cartão mostra quanto a fatura já tem.'],
     ['Fatura', 'O cartão fecha dia 3 e vence dia 10. Pagar a fatura não é gasto novo: cada parte já foi descontada antes. Se o banco cobrar diferente, a diferença vira um ajuste.'],
     ['Reserva (CDB)', 'Fica fora do saldo da conta. Guardar sai do Livre; resgatar volta pro Livre. Ela também é a garantia do limite do cartão.'],
     ['Conferir saldo', 'Você digita o saldo do C6 e o app compara com o esperado: último saldo conferido mais o que entrou menos o que saiu da conta. Cartão e dinheiro vivo não contam.'],

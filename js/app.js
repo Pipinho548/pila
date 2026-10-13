@@ -477,7 +477,7 @@ function explicarCartao(data, regra) {
   const quando = dataCurta(vencimentoDaFatura(fatura, vence));
   if (regra === 'uber') return `Uber no cartão: vai pra fatura de ${quando} e entra no plano de ${nomeMes(fatura)}. Não mexe no seu Livre de hoje.`;
   if (regra === 'assinatura') return `Assinatura: não mexe no seu Livre de agora. Entra como conta no plano de ${nomeMes(fatura)}, o mês em que a fatura de ${quando} vence.`;
-  return `No cartão: já sai do seu Livre agora e fica separado pra fatura de ${quando}. Quando ela chegar, o dinheiro já está lá.`;
+  return `No cartão: vai pra fatura de ${quando} e entra no plano de ${nomeMes(fatura)}, junto com o Uber. Não mexe no seu Livre de hoje.`;
 }
 
 function atualizarDica() {
@@ -747,7 +747,7 @@ folhaGeral.addEventListener('submit', async (e) => {
 });
 
 // Pagar a fatura não é gasto novo: sai da conta, mas o Livre já contou cada parte
-// (Uber, assinaturas e compras antigas pelo plano; o resto pelo "Reservado pra fatura").
+// (Uber e compras, assinaturas e compras antigas, tudo pelo plano do mês da fatura).
 async function pagarFatura(faturaMes, valor, data) {
   const f = detalheFatura(estado.dados, faturaMes, hojeSP());
   const quando = dataCurta(f.vence);
@@ -767,7 +767,7 @@ async function pagarFatura(faturaMes, valor, data) {
 
   // As contas do plano que eram dessa fatura ficam pagas, com o valor de verdade
   for (const item of itensDaFatura(estado.dados, faturaMes)) {
-    const real = item.tipo === 'fatura_uber' ? f.origem.uber : (item.valor_real ?? item.valor_previsto);
+    const real = item.tipo === 'fatura_uber' ? f.origem.compras : (item.valor_real ?? item.valor_previsto);
     trocar('itens_mes', await atualizar('itens_mes', item.id, { pago: true, pago_em: data, valor_real: real }));
   }
   salvarCache();
