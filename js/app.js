@@ -170,12 +170,17 @@ function rotaAtual() {
   return ROTAS[rota] ? rota : 'hoje';
 }
 
+// Tela de computador: a Hoje vira um painel em duas colunas (o resto se ajeita só com CSS)
+const telaLarga = matchMedia('(min-width: 1100px)');
+telaLarga.addEventListener('change', () => render());
+
 function ctx() {
   return {
     ...estado,
     hoje: hojeSP(),
     naFila: estado.usuario ? lerFila(estado.usuario.id).length : 0,
     tema: document.documentElement.dataset.tema,
+    largo: telaLarga.matches,
   };
 }
 
@@ -189,6 +194,7 @@ function render() {
   const animar = rota === 'hoje' && Boolean(estado.dados?.config) && !pilhaAnimou;
   if (animar) pilhaAnimou = true;
   conteudo.innerHTML = ROTAS[rota]({ ...ctx(), animar });
+  conteudo.dataset.tela = rota;
   const aba = ABA_DA_ROTA[rota] ?? rota;
   document.querySelectorAll('.abas a').forEach((a) => {
     if (a.dataset.aba === aba) a.setAttribute('aria-current', 'page');

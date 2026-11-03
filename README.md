@@ -21,6 +21,18 @@ node --test
 `tests/` tem os testes das regras com números inventados. Se existir a pasta `privado/` (só no seu PC),
 o mesmo comando roda também os testes de aceitação com os dados reais.
 
+App de teste, sem Supabase (banco de mentira no navegador e relógio que dá pra adiantar):
+
+```bash
+node tools/teste/servidor-teste.mjs
+```
+
+Abra http://localhost:5176/pila/?reset=1 e importe os dados em Mais. `?agora=2026-12-01T09:00:00-03:00` finge outra data.
+
+No computador (a partir de 1000px de largura) o menu fica na lateral e as folhas abrem como janela;
+a partir de 1100px a tela Hoje vira um painel em duas colunas e as telas com muitos blocos usam colunas.
+No celular nada disso aparece.
+
 ## Dados iniciais
 
 O arquivo `privado/dados-iniciais.json` tem os dados reais e nunca vai pro GitHub.

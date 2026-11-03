@@ -876,3 +876,192 @@ details[open].cartao > summary { margin-bottom: 6px; }
 @media (prefers-reduced-motion: no-preference) {
   .toast:not([hidden]) { animation: subir 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 }
+
+/* ==========================================================================
+   Tablet e computador. Tudo daqui pra baixo fica dentro de @media:
+   no celular nada muda.
+   ========================================================================== */
+
+/* Tablet: a barra de cima ocupa a largura toda (antes virava uma faixa escura no meio) */
+@media (min-width: 600px) {
+  .barra-topo { max-width: none; padding-inline: max(16px, calc(50% - 264px)); }
+}
+
+/* Computador: menu na lateral, folhas viram janelas no meio da tela */
+@media (min-width: 1000px) {
+  :root { --lateral: 248px; }
+  #app { padding-left: var(--lateral); }
+
+  /* A barra de cima vira o topo do menu: marca e olho */
+  .barra-topo {
+    position: fixed;
+    top: 0; left: 0;
+    z-index: 21;
+    width: var(--lateral);
+    margin: 0;
+    padding: 26px 16px 0 26px;
+    background: none;
+  }
+
+  /* Menu lateral, com o Lançar em cima das abas */
+  .dock {
+    top: 0; bottom: 0; left: 0; right: auto;
+    width: var(--lateral);
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    gap: 22px;
+    padding: 100px 16px 24px;
+    background: var(--superficie);
+    border-right: 1px solid var(--linha);
+    pointer-events: auto;
+  }
+  .btn-lancar {
+    order: -1;
+    width: 100%;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: 18px 6px 18px 18px;
+    box-shadow: none;
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .btn-lancar svg { width: 22px; height: 22px; }
+  .btn-lancar::after { content: "Lançar"; }
+  .abas {
+    flex: none;
+    max-width: none;
+    height: auto;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .abas a {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 14px;
+    height: 48px;
+    padding: 0 16px;
+    border-radius: 16px 5px 16px 5px;
+    font-size: 16px;
+  }
+  .abas svg { width: 22px; height: 22px; }
+
+  /* Conteúdo alinhado à esquerda, logo depois do menu */
+  #conteudo { max-width: 720px; margin: 0; padding: 30px 40px 64px; }
+
+  /* Linhas tocáveis ganham um respiro dos lados pro destaque do mouse */
+  .lista .botao-linha, .lista .linha-link, .botao-limite {
+    width: calc(100% + 20px);
+    margin-inline: -10px;
+    padding-inline: 10px;
+    border-radius: 12px;
+  }
+
+  /* Folhas: janela no meio da tela, sem o puxador */
+  .folha {
+    margin: auto;
+    max-width: 540px;
+    max-height: min(86dvh, 860px);
+    border-radius: 24px;
+    padding: 24px 28px 28px;
+    box-shadow: 0 24px 64px rgb(0 0 0 / 0.35);
+  }
+  .folha::before { display: none; }
+
+  /* Aviso rápido no canto, longe do menu */
+  .toast {
+    left: auto; right: 28px; bottom: 28px;
+    width: min(400px, calc(100vw - var(--lateral) - 56px));
+    max-width: none;
+    margin: 0;
+  }
+}
+
+/* Tela larga: painel na Hoje e colunas nas telas com muitos blocos */
+@media (min-width: 1100px) {
+  #conteudo { max-width: 1180px; padding: 34px 48px 72px; }
+
+  /* Hoje: à esquerda o mês, à direita contas, cartão e avisos */
+  .painel {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+  .painel-principal, .painel-lateral { min-width: 0; }
+  .painel-principal { container-type: inline-size; }
+  .painel .heroi { padding: 26px 28px 24px; }
+  .painel .heroi-valor { font-size: 72px; }
+  .painel .grafico { height: 170px; }
+}
+
+/* Coluna principal com espaço: o número de hoje do lado da pilha do mês */
+@container (min-width: 700px) {
+  .painel .heroi {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 32px;
+    align-items: start;
+    padding: 28px 30px;
+  }
+  .painel .heroi > * { grid-column: 1; }
+  .painel .heroi > .pilha {
+    grid-column: 2;
+    grid-row: 1 / span 5;
+    align-self: center;
+    margin-top: 0;
+    padding: 4px 0 4px 30px;
+    border-top: 0;
+    border-left: 1px solid var(--linha);
+  }
+}
+
+@media (min-width: 1100px) {
+  /* Telas com muitos blocos: duas colunas que se encaixam, na mesma ordem de leitura do celular */
+  #conteudo:is([data-tela="mes"], [data-tela="dividas"], [data-tela="comprar"], [data-tela="mais"], [data-tela="config"], [data-tela="como"]) {
+    columns: 2;
+    column-gap: 16px;
+  }
+  #conteudo[data-tela] > * { break-inside: avoid; }
+  #conteudo[data-tela] > :is(.cabecalho, .topo-botao) { column-span: all; }
+  #conteudo[data-tela] > .secao { break-after: avoid; }
+  /* column-span só vale pra bloco: o botão vira flex de bloco, do tamanho do texto */
+  #conteudo[data-tela] > .topo-botao { display: flex; width: fit-content; margin-top: 0; padding-inline: 28px; }
+
+  /* Telas curtas: uma coluna confortável */
+  #conteudo:is([data-tela="conferir"], [data-tela="fatura"], [data-tela="caixinhas"], [data-tela="receber"]) { max-width: 780px; }
+}
+
+/* Monitor grande: mais espaço e três colunas */
+@media (min-width: 1600px) {
+  :root { --lateral: 272px; }
+  #conteudo { max-width: 1440px; }
+  #conteudo:is([data-tela="mes"], [data-tela="dividas"], [data-tela="comprar"], [data-tela="mais"], [data-tela="config"], [data-tela="como"]) { columns: 3; }
+}
+
+/* Mouse: o que dá pra clicar responde quando passa por cima */
+@media (hover: hover) and (min-width: 1000px) {
+  .abas a:hover:not([aria-current="page"]) { background: var(--superficie-2); color: var(--tinta); }
+  .btn-lancar:hover, .btn-primario:hover:not(:disabled), .btn-mini:hover { filter: brightness(1.07); }
+  .btn-secundario:hover, .chip span:hover, .chip-botao:hover { border-color: var(--tinta-3); }
+  .btn-perigo:hover { border-color: var(--tijolo); }
+  .btn-olho:hover, .btn-nav:hover, .btn-fechar:hover { border-color: var(--tinta-3); color: var(--tinta); }
+  a.widget, .cartao.toque { transition: border-color 140ms ease; }
+  a.widget:hover, .cartao.toque:hover { border-color: rgb(216 198 160 / 0.32); }
+  .lista .botao-linha:hover, .lista .linha-link:hover, .botao-limite:hover { background: var(--superficie-2); }
+  .menu a:hover > span:first-child { color: var(--erva-claro); }
+  .grupo-mais:hover, .btn-link:hover { text-decoration: underline; }
+  .pilha:hover .pilha-nome { color: var(--tinta); }
+}

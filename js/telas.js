@@ -340,13 +340,10 @@ export function telaHoje(ctx) {
   const faturaMostrada = paraPagar[0] ?? fatura;
   const faturaFechou = Boolean(paraPagar[0]);
 
-  return `${data}
-    ${heroi}
-
-    ${ctx.naFila ? `<p class="faixa">${ctx.naFila === 1 ? '1 lançamento esperando' : `${ctx.naFila} lançamentos esperando`} internet pra ir pro Supabase.</p>` : ''}
-    ${paraFechar ? cartaoFecharMes(paraFechar) : ''}
-
-    <div class="grade-w">
+  // Os blocos da tela. No celular: uma coluna, nesta ordem. No computador: um painel com duas colunas.
+  const fila = ctx.naFila ? `<p class="faixa">${ctx.naFila === 1 ? '1 lançamento esperando' : `${ctx.naFila} lançamentos esperando`} internet pra ir pro Supabase.</p>` : '';
+  const fechar = paraFechar ? cartaoFecharMes(paraFechar) : '';
+  const contaReserva = `<div class="grade-w">
       ${blocoPequeno({
         href: '#conferir', nome: 'conta', rotulo: `Na conta ${nomeBanco(dados)}`,
         valor: conta ? moeda(conta.esperado) : 'Conferir',
@@ -356,12 +353,10 @@ export function telaHoje(ctx) {
         href: '#caixinhas', nome: 'reserva', rotulo: 'Reserva', classe: 'brilho-erva',
         valor: moeda(calc.saldoCaixinha(reserva, dados.lancamentos)), valorClasse: 'positivo', sub: 'guardado',
       }) : ''}
-    </div>
-
-    ${graficoGastos(dados, hoje)}
-    ${blocoCategorias(dados, hoje)}
-
-    <div class="grade-w">
+    </div>`;
+  const grafico = graficoGastos(dados, hoje);
+  const categorias = blocoCategorias(dados, hoje);
+  const faturaAssinaturas = `<div class="grade-w">
       ${blocoPequeno({
         href: '#fatura', nome: 'cartao', rotulo: faturaFechou ? 'Fatura fechou' : 'Fatura atual',
         classe: faturaFechou ? 'brilho-palha' : '',
@@ -375,9 +370,8 @@ export function telaHoje(ctx) {
           ? (assinaturas.emDias === 0 ? `${esc(assinaturas.proxima.nome)} hoje` : `próxima em ${assinaturas.emDias} ${assinaturas.emDias === 1 ? 'dia' : 'dias'}`)
           : 'por mês',
       })}
-    </div>
-
-    <section class="widget lista-w">
+    </div>`;
+  const faltaPagar = `<section class="widget lista-w">
       <a class="w-topo" href="#mes"><span class="w-rotulo">Falta pagar</span><span class="w-valor num">${moeda(mes.faltaPagar)}</span></a>
       ${proximas.length ? `<ul class="lista">${proximas.map((i) => `
         <li><button type="button" class="botao-linha linha" data-acao="abrir-item" data-id="${i.id}">
@@ -387,29 +381,56 @@ export function telaHoje(ctx) {
         </button></li>`).join('')}</ul>
         ${faltam > 0 ? `<a class="grupo-mais" href="#mes">Mais ${faltam} ${faltam === 1 ? 'conta' : 'contas'} no mês</a>` : ''}`
         : '<p class="vazio">Tudo pago este mês.</p>'}
-    </section>
-
-    ${devo.total > 0 ? `
+    </section>`;
+  const dividas = devo.total > 0 ? `
     <a class="widget faixa-w" href="#dividas">
       <span class="w-texto">
         <span class="w-rotulo">Dívidas</span>
         <span class="w-valor num">${moeda(devo.total)}</span>
       </span>
       ${libera ? `<span class="w-sub alinha-direita">Em ${esc(nomeMes(libera.mes))} sobram<br><b class="positivo num">+${moeda(libera.valor)} por mês</b></span>` : ''}
-    </a>` : ''}
-
-    ${alertas.length ? `
+    </a>` : '';
+  const atencao = alertas.length ? `
     <section class="widget lista-w">
       <span class="w-topo"><span class="w-rotulo">Atenção</span></span>
       <ul class="lista alertas">${alertas.map((a) => `<li class="alerta alerta-${a.tipo}"><span>${textoAlerta(a, hoje)}</span></li>`).join('')}</ul>
-    </section>` : ''}
-
-    <section class="widget lista-w">
+    </section>` : '';
+  const recentes = `<section class="widget lista-w">
       <span class="w-topo"><span class="w-rotulo">Últimos lançamentos</span></span>
       ${ultimos.length
         ? `<ul class="lista">${ultimos.map((l) => linhaLancamento(dados, l)).join('')}</ul>`
         : '<p class="vazio">Nada lançado ainda. Toca no + pra lançar o primeiro gasto.</p>'}
     </section>`;
+
+  // Tela larga: à esquerda o mês (quanto dá, gráfico, categorias, últimos); à direita avisos, contas e cartão
+  if (ctx.largo) {
+    return `${data}
+    <div class="painel">
+      <div class="painel-principal">${heroi}${fila}${fechar}${grafico}${categorias}${recentes}</div>
+      <div class="painel-lateral">${atencao}${contaReserva}${faturaAssinaturas}${faltaPagar}${dividas}</div>
+    </div>`;
+  }
+
+  return `${data}
+    ${heroi}
+
+    ${fila}
+    ${fechar}
+
+    ${contaReserva}
+
+    ${grafico}
+    ${categorias}
+
+    ${faturaAssinaturas}
+
+    ${faltaPagar}
+
+    ${dividas}
+
+    ${atencao}
+
+    ${recentes}`;
 }
 
 function textoAlerta(a, hoje) {
